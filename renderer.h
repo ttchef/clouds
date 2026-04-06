@@ -66,6 +66,7 @@ struct rcontext {
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers);
+bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 void renderer_deint(struct rcontext *rctx);
 
 #endif // RENDERER_H

@@ -1,6 +1,7 @@
 
 #include "renderer.h"
 #include <GLFW/glfw3.h>
+#include <bits/pthreadtypes.h>
 #include <vulkan/vulkan_core.h>
 
 #include <stdlib.h>
@@ -263,7 +264,7 @@ static bool create_swapchain(struct rcontext *c, GLFWwindow *window) {
     extent.width = MIN(caps.maxImageExtent.width, extent.width);
     extent.height = MIN(caps.maxImageExtent.height, extent.height);
     extent.width = MAX(caps.minImageExtent.width, extent.width);
-    extent.height = MAX(caps.maxImageExtent.height, extent.height);
+    extent.height = MAX(caps.minImageExtent.height, extent.height);
 
     u32 n_imgs = caps.minImageCount + 1;
     if (caps.maxImageCount > 0 && n_imgs > caps.maxImageCount) {
@@ -555,6 +556,9 @@ error_path:
 }
 
 static bool create_frame_data(struct rcontext *c) {
+    c->frame_idx = 0;
+    c->img_idx = 0;
+
     VkCommandPoolCreateInfo pool_create_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
@@ -681,7 +685,146 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     return true;
 }
 
+static bool record_cmd_buffer(struct rcontext *c) {
+    struct frame_data *data = &c->frame_data[c->frame_idx];
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    };
+
+    if (vkBeginCommandBuffer(data->cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to begin recording in the command buffer: %d",
+             c->frame_idx);
+        return false;
+    }
+
+    vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      c->pipeline.handle);
+
+    VkViewport viewport = {
+        .width = c->swapchain.extent.width,
+        .height = c->swapchain.extent.height,
+        .maxDepth = 1.0f,
+    };
+
+    VkRect2D scissor = {
+        .extent = c->swapchain.extent,
+        .offset = (VkOffset2D){0, 0},
+    };
+
+    vkCmdSetViewport(data->cmd_buffer, 0, 1, &viewport);
+    vkCmdSetScissor(data->cmd_buffer, 0, 1, &scissor);
+
+    VkClearValue clear_color = {
+        .color = {{0.0f, 0.0f, 0.0f, 1.0f}},
+    };
+
+    VkRenderingAttachmentInfo color_attachment_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = c->swapchain.imgs_views[c->img_idx],
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = clear_color,
+    };
+
+    VkRenderingInfo render_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .layerCount = 1,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &color_attachment_info,
+        .renderArea =
+            {
+                .extent = c->swapchain.extent,
+                .offset = (VkOffset2D){0, 0},
+            },
+    };
+
+    vkCmdBeginRendering(data->cmd_buffer, &render_info);
+
+    vkCmdDraw(data->cmd_buffer, 3, 1, 0, 0);
+
+    vkCmdEndRendering(data->cmd_buffer);
+
+    if (vkEndCommandBuffer(data->cmd_buffer) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to end recording in the command buffer: %d",
+             c->frame_idx);
+        return false;
+    }
+
+    return true;
+}
+
+bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
+    struct frame_data *data = &c->frame_data[c->frame_idx];
+
+    vkWaitForFences(c->dev, 1, &data->in_flight_fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(c->dev, 1, &data->in_flight_fence);
+
+    VkResult res = vkAcquireNextImageKHR(c->dev, c->swapchain.handle,
+                                         UINT64_MAX, data->image_available,
+                                         VK_NULL_HANDLE, &c->img_idx);
+    if (res == VK_ERROR_OUT_OF_DATE_KHR) {
+        // recreate swapchain
+        vkDeviceWaitIdle(c->dev);
+        destroy_swapchain(c);
+        create_swapchain(c, window);
+        return true; // no error
+    } else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) {
+        LOGM(ERROR, "failed to acquire swapchain image");
+        return false;
+    }
+
+    vkResetCommandBuffer(data->cmd_buffer, 0);
+    record_cmd_buffer(c);
+
+    VkSemaphore wait_semaphors[] = {
+        data->image_available,
+    };
+
+    VkSemaphore signal_semphors[] = {
+        data->finished,
+    };
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &data->cmd_buffer,
+        .waitSemaphoreCount = ARRAY_COUNT(wait_semaphors),
+        .pWaitSemaphores = wait_semaphors,
+        .signalSemaphoreCount = ARRAY_COUNT(signal_semphors),
+        .pSignalSemaphores = signal_semphors,
+    };
+
+    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info,
+                      data->in_flight_fence) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit graphics queue");
+        return false;
+    }
+
+    VkPresentInfoKHR present_info = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .swapchainCount = 1,
+        .pSwapchains = &c->swapchain.handle,
+        .pImageIndices = &c->img_idx,
+        .waitSemaphoreCount = ARRAY_COUNT(signal_semphors),
+        .pWaitSemaphores = signal_semphors,
+    };
+
+    if (vkQueuePresentKHR(c->graphics_queue.handle, &present_info) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to present graphics queue");
+        return false;
+    }
+
+    c->frame_idx = (c->frame_idx + 1) % FRAMES_IN_FLIGHT;
+
+    return true;
+}
+
 void renderer_deint(struct rcontext *rctx) {
+    vkDeviceWaitIdle(rctx->dev);
+
     vkDestroyPipelineLayout(rctx->dev, rctx->pipeline.layout, NULL);
     vkDestroyPipeline(rctx->dev, rctx->pipeline.handle, NULL);
 

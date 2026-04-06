@@ -51,7 +51,7 @@ i32 main(void) {
     }
 
     while (!glfwWindowShouldClose(ctx.window)) {
-
+        renderer_draw(&ctx.rctx, ctx.window);
         glfwPollEvents();
     }
 
