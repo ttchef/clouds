@@ -3,10 +3,12 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan_core.h>
 
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "log.h"
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 static struct api_version get_api_version() {
     u32 instance_version;
@@ -115,7 +117,7 @@ static bool create_phy_dev(struct rcontext *c) {
     VkPhysicalDevice devs[8];
     vkEnumeratePhysicalDevices(c->instance, &n_phys_dev, devs);
 
-    for (i32 i = 0; i < n_phys_dev; i++) {
+    for (u32 i = 0; i < n_phys_dev; i++) {
         VkPhysicalDevice dev = devs[i];
         u32 n_queues;
         vkGetPhysicalDeviceQueueFamilyProperties(dev, &n_queues, NULL);
@@ -126,7 +128,7 @@ static bool create_phy_dev(struct rcontext *c) {
         i32 graphics_queue_family_index = -1;
         i32 present_queue_family_index = -1;
 
-        for (i32 j = 0; j < n_queues; j++) {
+        for (u32 j = 0; j < n_queues; j++) {
             if (props[j].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 graphics_queue_family_index = j;
             }
@@ -215,6 +217,135 @@ static bool create_log_dev(struct rcontext *c) {
     return true;
 }
 
+static bool create_swapchain(struct rcontext *c, GLFWwindow *window) {
+    VkSurfaceCapabilitiesKHR caps;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(c->phy_dev, c->surface, &caps);
+
+    u32 n_fmts;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(c->phy_dev, c->surface, &n_fmts, NULL);
+    VkSurfaceFormatKHR fmts[n_fmts];
+    vkGetPhysicalDeviceSurfaceFormatsKHR(c->phy_dev, c->surface, &n_fmts, fmts);
+
+    VkSurfaceFormatKHR fmt = fmts[0];
+    for (u32 i = 0; i < n_fmts; i++) {
+        if (fmts[i].format == VK_FORMAT_B8G8R8_SRGB &&
+            fmts[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            fmt = fmts[i];
+            break;
+        }
+    }
+
+    u32 n_present_modes;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(c->phy_dev, c->surface,
+                                              &n_present_modes, NULL);
+    VkPresentModeKHR present_modes[n_present_modes];
+    vkGetPhysicalDeviceSurfacePresentModesKHR(c->phy_dev, c->surface,
+                                              &n_present_modes, present_modes);
+
+    VkPresentModeKHR present_mode = present_modes[0];
+    for (u32 i = 0; i < n_present_modes; i++) {
+        if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
+            present_mode = present_modes[i];
+            break;
+        }
+    }
+
+    i32 w, h;
+    glfwGetWindowSize(window, &w, &h);
+
+    VkExtent2D extent = (VkExtent2D){
+        .width = w,
+        .height = h,
+    };
+
+    extent.width = MIN(caps.maxImageExtent.width, extent.width);
+    extent.height = MIN(caps.maxImageExtent.height, extent.height);
+    extent.width = MAX(caps.minImageExtent.width, extent.width);
+    extent.height = MAX(caps.maxImageExtent.height, extent.height);
+
+    u32 n_imgs = caps.minImageCount + 1;
+    if (caps.maxImageCount > 0 && n_imgs > caps.maxImageCount) {
+        n_imgs = caps.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR create_info = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface = c->surface,
+        .clipped = VK_TRUE,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageFormat = fmt.format,
+        .imageColorSpace = fmt.colorSpace,
+        .presentMode = present_mode,
+        .imageExtent = extent,
+        .minImageCount = n_imgs,
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+    };
+
+    if (vkCreateSwapchainKHR(c->dev, &create_info, NULL,
+                             &c->swapchain.handle) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create swapchain");
+        return false;
+    }
+
+    c->swapchain.fmt = fmt.format;
+    c->swapchain.extent = extent;
+
+    vkGetSwapchainImagesKHR(c->dev, c->swapchain.handle, &c->swapchain.n_imgs,
+                            NULL);
+    c->swapchain.imgs = calloc(c->swapchain.n_imgs, sizeof(VkImage));
+    vkGetSwapchainImagesKHR(c->dev, c->swapchain.handle, &c->swapchain.n_imgs,
+                            c->swapchain.imgs);
+    c->swapchain.imgs_views = calloc(c->swapchain.n_imgs, sizeof(VkImageView));
+
+    for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
+        VkImageViewCreateInfo create_info = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = c->swapchain.imgs[i],
+            .format = c->swapchain.fmt,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .subresourceRange =
+                {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .layerCount = 1,
+                    .levelCount = 1,
+                },
+        };
+
+        if (vkCreateImageView(c->dev, &create_info, NULL,
+                              &c->swapchain.imgs_views[i]) != VK_SUCCESS) {
+            LOGM(ERROR, "Failed to create image view: %d", i);
+
+            free(c->swapchain.imgs_views);
+            c->swapchain.imgs_views = NULL;
+
+            free(c->swapchain.imgs);
+            c->swapchain.imgs = NULL;
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void destroy_swapchain(struct rcontext *c) {
+    if (c->swapchain.imgs) {
+        free(c->swapchain.imgs);
+    }
+
+    for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
+        vkDestroyImageView(c->dev, c->swapchain.imgs_views[i], NULL);
+    }
+
+    if (c->swapchain.imgs_views) {
+        free(c->swapchain.imgs_views);
+    }
+
+    vkDestroySwapchainKHR(c->dev, c->swapchain.handle, NULL);
+}
+
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers) {
     if (!create_instance(rctx, n_exts, exts, n_layers, layers)) {
@@ -247,10 +378,17 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created logical device");
 
+    if (!create_swapchain(rctx, window)) {
+        return false;
+    }
+
+    LOGM(INFO, "created swapchain");
+
     return true;
 }
 
 void renderer_deint(struct rcontext *rctx) {
+    destroy_swapchain(rctx);
     vkDestroySurfaceKHR(rctx->instance, rctx->surface, NULL);
 
     PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT =

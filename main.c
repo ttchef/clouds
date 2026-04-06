@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <vulkan/vulkan_core.h>
 
+#include "log.h"
 #include "renderer.h"
 
 struct context {
@@ -42,7 +43,12 @@ i32 main(void) {
         "VK_LAYER_KHRONOS_validation",
     };
 
-    renderer_init(&ctx.rctx, ctx.window, n_exts, exts, 1, layers);
+    if (!renderer_init(&ctx.rctx, ctx.window, n_exts, exts, 1, layers)) {
+        LOGM(ERROR, "failed to init renderer");
+        glfwDestroyWindow(ctx.window);
+        glfwTerminate();
+        return 1;
+    }
 
     while (!glfwWindowShouldClose(ctx.window)) {
 

@@ -21,6 +21,16 @@ struct queue {
     i32 index;
 };
 
+struct swapchain {
+    VkSwapchainKHR handle;
+    VkFormat fmt;
+    VkExtent2D extent;
+
+    VkImageView *imgs_views;
+    VkImage *imgs;
+    u32 n_imgs;
+};
+
 struct rcontext {
     VkInstance instance;
     VkDebugUtilsMessengerEXT db_messenger;
@@ -29,6 +39,7 @@ struct rcontext {
     VkDevice dev;
     struct queue graphics_queue;
     struct queue present_queue;
+    struct swapchain swapchain;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
