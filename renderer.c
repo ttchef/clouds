@@ -546,13 +546,73 @@ error_path:
     return false;
 }
 
+static bool create_frame_data(struct rcontext *c) {
+    VkCommandPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = c->graphics_queue.index,
+    };
+
+    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &c->cmd_pool) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command pool");
+        return false;
+    }
+
+    VkSemaphoreCreateInfo sem_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+
+    VkFenceCreateInfo fence_create_info = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+    };
+
+    for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        VkCommandBufferAllocateInfo alloc_info = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = c->cmd_pool,
+            .commandBufferCount = 1,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        };
+
+        if (vkAllocateCommandBuffers(c->dev, &alloc_info,
+                                     &c->frame_data[i].cmd_buffer) !=
+            VK_SUCCESS) {
+            LOGM(ERROR, "failed to allocate command buffer: %d", i);
+            return false;
+        }
+
+        if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
+                              &c->frame_data[i].image_available) !=
+            VK_SUCCESS) {
+            LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
+            return false;
+        }
+
+        if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
+                              &c->frame_data[i].finished) != VK_SUCCESS) {
+            LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
+            return false;
+        }
+
+        if (vkCreateFence(c->dev, &fence_create_info, NULL,
+                          &c->frame_data[i].in_flight_fence) != VK_SUCCESS) {
+            LOGM(ERROR, "failed to create fence: %d", i);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers) {
     if (!create_instance(rctx, n_exts, exts, n_layers, layers)) {
         return false;
     }
 
-    LOGM(INFO, "Created Instance");
+    LOGM(INFO, "Created instance");
 
     if (!create_db_messenger(rctx)) {
         return false;
@@ -589,6 +649,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created pipline");
+
+    if (!create_frame_data(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created frame data");
 
     return true;
 }

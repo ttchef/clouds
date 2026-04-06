@@ -10,6 +10,8 @@
 
 #include "types.h"
 
+#define FRAMES_IN_FLIGHT 3
+
 struct api_version {
     u32 major;
     u32 minor;
@@ -36,16 +38,30 @@ struct pipeline {
     VkPipelineLayout layout;
 };
 
+struct frame_data {
+    VkSemaphore image_available;
+    VkSemaphore finished;
+
+    VkFence in_flight_fence;
+    VkCommandBuffer cmd_buffer;
+};
+
 struct rcontext {
     VkInstance instance;
     VkDebugUtilsMessengerEXT db_messenger;
     VkSurfaceKHR surface;
     VkPhysicalDevice phy_dev;
     VkDevice dev;
+
     struct queue graphics_queue;
     struct queue present_queue;
     struct swapchain swapchain;
     struct pipeline pipeline;
+
+    VkCommandPool cmd_pool;
+    struct frame_data frame_data[FRAMES_IN_FLIGHT];
+    u32 frame_idx;
+    u32 img_idx;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
