@@ -610,7 +610,7 @@ static bool create_frame_data(struct rcontext *c) {
         LOGM(API_DUMP, "created image available semaphor: %d", i);
 
         if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
-                              &c->frame_data[i].finished) != VK_SUCCESS) {
+                              &c->finished[i]) != VK_SUCCESS) {
             LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
             return false;
         }
@@ -888,7 +888,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     VkImageMemoryBarrier mem_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -1013,6 +1013,8 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
         return false;
     }
 
+    VkSemaphore finished = c->finished[c->img_idx];
+
     vkResetCommandBuffer(data->cmd_buffer, 0);
     record_cmd_buffer(c);
 
@@ -1021,7 +1023,7 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
     };
 
     VkSemaphore signal_semphors[] = {
-        data->finished,
+        finished,
     };
 
     VkPipelineStageFlags wait_stages[] = {
@@ -1074,7 +1076,7 @@ void renderer_deint(struct rcontext *rctx) {
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,
                            NULL);
-        vkDestroySemaphore(rctx->dev, rctx->frame_data[i].finished, NULL);
+        vkDestroySemaphore(rctx->dev, rctx->finished[i], NULL);
         vkDestroyFence(rctx->dev, rctx->frame_data[i].in_flight_fence, NULL);
     }
 

@@ -48,8 +48,6 @@ struct buffer {
 
 struct frame_data {
     VkSemaphore image_available;
-    VkSemaphore finished;
-
     VkFence in_flight_fence;
     VkCommandBuffer cmd_buffer;
 };
@@ -69,6 +67,7 @@ struct rcontext {
 
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
+    VkSemaphore finished[FRAMES_IN_FLIGHT];
     u32 frame_idx;
     u32 img_idx;
 
