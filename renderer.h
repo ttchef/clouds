@@ -20,6 +20,7 @@ struct rcontext {
     VkInstance instance;
     VkDebugUtilsMessengerEXT db_messenger;
     VkSurfaceKHR surface;
+    VkPhysicalDevice phy_dev;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,

@@ -44,7 +44,7 @@ i32 main(void) {
 
     renderer_init(&ctx.rctx, ctx.window, n_exts, exts, 1, layers);
 
-    while (glfwWindowShouldClose(ctx.window)) {
+    while (!glfwWindowShouldClose(ctx.window)) {
 
         glfwPollEvents();
     }

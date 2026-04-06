@@ -6,10 +6,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "log.h"
+
 static struct api_version get_api_version() {
     u32 instance_version;
     if (vkEnumerateInstanceVersion(&instance_version) != VK_SUCCESS) {
-        fprintf(stderr, "failed to get instance version\n");
+        LOGM(ERROR, "failed to get instance version");
         exit(1);
     }
 
@@ -41,7 +43,7 @@ static bool create_instance(struct rcontext *c, i32 n_exts, const char **exts,
     };
 
     if (vkCreateInstance(&create_info, NULL, &c->instance) != VK_SUCCESS) {
-        fprintf(stderr, "failed to create instance\n");
+        LOGM(ERROR, "failed to create instance");
         return false;
     }
 
@@ -57,7 +59,7 @@ debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
     (void)message_type;
     (void)user_data;
 
-    fprintf(stderr, "Validation: %s\n", callback_data->pMessage);
+    LOGM(WARN, "Validation: %s", callback_data->pMessage);
 
     return VK_FALSE;
 }
@@ -78,14 +80,13 @@ static bool create_db_messenger(struct rcontext *c) {
         (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
             c->instance, "vkCreateDebugUtilsMessengerEXT");
     if (!vkCreateDebugUtilsMessengerEXT) {
-        fprintf(stderr,
-                "failed to load debug utils messenger function pointer\n");
+        LOGM(ERROR, "failed to load debug utils messenger function pointer");
         return false;
     }
 
     if (vkCreateDebugUtilsMessengerEXT(c->instance, &create_info, NULL,
                                        &c->db_messenger) != VK_SUCCESS) {
-        fprintf(stderr, "failed to create debug messenger\n");
+        LOGM(ERROR, "failed to create debug messenger");
         return false;
     }
 
@@ -95,9 +96,31 @@ static bool create_db_messenger(struct rcontext *c) {
 static bool create_surface(struct rcontext *c, GLFWwindow *window) {
     glfwCreateWindowSurface(c->instance, window, NULL, &c->surface);
     if (!c->surface) {
-        fprintf(stderr, "failed to create surface\n");
+        LOGM(ERROR, "failed to create surface");
         return false;
     }
+
+    return true;
+}
+
+static bool create_phy_dev(struct rcontext *c) {
+    u32 n_phys_dev;
+    vkEnumeratePhysicalDevices(c->instance, &n_phys_dev, NULL);
+    if (n_phys_dev == 0) {
+        LOGM(ERROR, "failed to find GPU which supports vulkan");
+        return false;
+    }
+
+    // no one has more than 8 gpus :sob:
+    VkPhysicalDevice devs[8];
+    vkEnumeratePhysicalDevices(c->instance, &n_phys_dev, devs);
+
+    // TODO: actuall check the features of the GPU
+    c->phy_dev = devs[0];
+
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(c->phy_dev, &props);
+    LOGM(INFO, "picked GPU: %s", props.deviceName);
 
     return true;
 }
@@ -108,19 +131,25 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
         return false;
     }
 
-    fprintf(stderr, "Created Instance\n");
+    LOGM(INFO, "Created Instance");
 
     if (!create_db_messenger(rctx)) {
         return false;
     }
 
-    fprintf(stderr, "created debug messenger\n");
+    LOGM(INFO, "created debug messenger");
 
     if (!create_surface(rctx, window)) {
         return false;
     }
 
-    fprintf(stderr, "created surface\n");
+    LOGM(INFO, "created surface");
+
+    if (!create_phy_dev(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created physical device");
 
     return true;
 }
