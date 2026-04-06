@@ -291,6 +291,8 @@ static bool create_swapchain(struct rcontext *c, GLFWwindow *window) {
         return false;
     }
 
+    LOGM(API_DUMP, "Swapchain Size: %d | %d", extent.width, extent.height);
+
     c->swapchain.fmt = fmt.format;
     c->swapchain.extent = extent;
 
@@ -394,10 +396,14 @@ static bool create_pipeline(struct rcontext *c) {
         return false;
     }
 
+    LOGM(API_DUMP, "created vertex shader module");
+
     VkShaderModule frag_module;
     if (!create_shader_module(c, &frag_module, "shaders/frag.spv")) {
         return false;
     }
+
+    LOGM(API_DUMP, "created fragment shader module");
 
     VkPipelineShaderStageCreateInfo shader_stages[] = {
         {
@@ -512,6 +518,8 @@ static bool create_pipeline(struct rcontext *c) {
         goto error_path;
     }
 
+    LOGM(API_DUMP, "created pipeline layout");
+
     VkGraphicsPipelineCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &dynamic_rendering,
@@ -559,6 +567,8 @@ static bool create_frame_data(struct rcontext *c) {
         return false;
     }
 
+    LOGM(API_DUMP, "created command pool");
+
     VkSemaphoreCreateInfo sem_create_info = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
     };
@@ -583,6 +593,8 @@ static bool create_frame_data(struct rcontext *c) {
             return false;
         }
 
+        LOGM(API_DUMP, "created command buffer: %d", i);
+
         if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
                               &c->frame_data[i].image_available) !=
             VK_SUCCESS) {
@@ -590,17 +602,23 @@ static bool create_frame_data(struct rcontext *c) {
             return false;
         }
 
+        LOGM(API_DUMP, "created image available semaphor: %d", i);
+
         if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
                               &c->frame_data[i].finished) != VK_SUCCESS) {
             LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
             return false;
         }
 
+        LOGM(API_DUMP, "created finished semaphor: %d", i);
+
         if (vkCreateFence(c->dev, &fence_create_info, NULL,
                           &c->frame_data[i].in_flight_fence) != VK_SUCCESS) {
             LOGM(ERROR, "failed to create fence: %d", i);
             return false;
         }
+
+        LOGM(API_DUMP, "created fence: %d", i);
     }
 
     return true;
@@ -612,7 +630,11 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
         return false;
     }
 
-    LOGM(INFO, "Created instance");
+    LOGM(INFO, "created instance");
+
+    struct api_version version = get_api_version();
+    LOGM(API_DUMP, "api version: %u.%u.%u", version.major, version.minor,
+         version.patch);
 
     if (!create_db_messenger(rctx)) {
         return false;

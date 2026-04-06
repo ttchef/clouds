@@ -3,6 +3,7 @@
 #define LOG_H
 
 #define LOGGER_LEVELS                                                          \
+    _X(API_DUMP, LOGGER_COLOR_MAGENTA)                                         \
     _X(INFO, LOGGER_COLOR_BLUE)                                                \
     _X(WARN, LOGGER_COLOR_YELLOW)                                              \
     _X(ERROR, LOGGER_COLOR_RED)

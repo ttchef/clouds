@@ -24,7 +24,15 @@
     _Y(LOGGER_COLOR_BLUE, "\x1b[34m")                                          \
     _Y(LOGGER_COLOR_YELLOW, "\x1b[33m")                                        \
     _Y(LOGGER_COLOR_RED, "\x1b[31m")                                           \
-    _Y(LOGGER_COLOR_GREEN, "\x1b[32m")
+    _Y(LOGGER_COLOR_GREEN, "\x1b[32m")                                         \
+    _Y(LOGGER_COLOR_MAGENTA, "\x1b[35m")                                       \
+    _Y(LOGGER_COLOR_CYAN, "\x1b[36m")                                          \
+    _Y(LOGGER_COLOR_WHITE, "\x1b[37m")                                         \
+    _Y(LOGGER_COLOR_BLACK, "\x1b[30m")                                         \
+    _Y(LOGGER_COLOR_BRIGHT_RED, "\x1b[91m")                                    \
+    _Y(LOGGER_COLOR_BRIGHT_GREEN, "\x1b[92m")                                  \
+    _Y(LOGGER_COLOR_BRIGHT_BLUE, "\x1b[94m")                                   \
+    _Y(LOGGER_COLOR_BRIGHT_YELLOW, "\x1b[93m")
 
 #define LOGGER_COLOR_BOLD "\x1b[1m"
 #define LOGGER_COLOR_RESET "\x1b[0m"
