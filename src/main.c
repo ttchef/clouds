@@ -59,6 +59,8 @@ i32 main(void) {
     glfwSetWindowSizeCallback(ctx.window, glfw_resize_callback);
 
     while (!glfwWindowShouldClose(ctx.window)) {
+        renderer_push_box(&ctx.rctx, (vec3){0.5, 0, 0}, (vec3){1.0, 1.0, 1.0},
+                          (vec4){0.0, 1.0, 0.0, 1.0});
         renderer_draw(&ctx.rctx, ctx.window);
         glfwPollEvents();
     }

@@ -10,6 +10,7 @@
 
 #include <vma/vma.h>
 
+#include "cmath.h"
 #include "types.h"
 
 #define FRAMES_IN_FLIGHT 3
@@ -52,6 +53,40 @@ struct frame_data {
     VkCommandBuffer cmd_buffer;
 };
 
+typedef u32 texture_id;
+
+enum {
+    DRAW_CMD_TYPE_BOX,
+    DRAW_CMD_TYPE_TEXTURE_BOX,
+};
+
+struct draw_cmd {
+    i32 type;
+    vec3 pos;
+    vec3 scale;
+
+    union {
+        struct {
+            vec4 color;
+        } box;
+
+        struct {
+            texture_id id;
+        } texture_box;
+    };
+};
+
+struct box_push_constant {
+    matrix m;
+    vec4 color;
+};
+
+struct render_queue {
+    u32 count;
+    u32 capacity;
+    struct draw_cmd *cmds;
+};
+
 struct rcontext {
     VmaAllocator allocator;
     VkInstance instance;
@@ -72,11 +107,13 @@ struct rcontext {
     u32 img_idx;
 
     struct buffer vertex_buffer;
+    struct render_queue render_queue;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers);
 bool renderer_resize(struct rcontext *rctx, u32 w, u32 h);
+void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 void renderer_deint(struct rcontext *rctx);
 

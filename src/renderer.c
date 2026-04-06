@@ -8,13 +8,134 @@
 
 #include "log.h"
 
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
 const f32 vertices[] = {
-    -0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.0f,
+    // Front
+    -0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+
+    0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+
+    // Back
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+
+    0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+
+    // Left
+    -0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+
+    // Right
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+
+    0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+
+    // Top
+    -0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+
+    // Bottom
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+
+    0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
+    -0.5f,
+    0.5f,
+    -0.5f,
+    -0.5f,
 };
 
 static struct api_version get_api_version() {
@@ -510,8 +631,15 @@ static bool create_pipeline(struct rcontext *c) {
         .pDynamicStates = dym_states,
     };
 
+    VkPushConstantRange push_range = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .size = sizeof(struct box_push_constant),
+    };
+
     VkPipelineLayoutCreateInfo layout_create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_range,
     };
 
     if (vkCreatePipelineLayout(c->dev, &layout_create_info, NULL,
@@ -870,7 +998,81 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created gpu buffers");
 
+    // staring value
+    rctx->render_queue.count = 0;
+    rctx->render_queue.capacity = 4;
+    rctx->render_queue.cmds =
+        malloc(sizeof(struct draw_cmd) * rctx->render_queue.capacity);
+
     return true;
+}
+
+static void push_draw_cmd(struct rcontext *c, struct draw_cmd *cmd) {
+    struct render_queue *q = &c->render_queue;
+
+    if (q->count + 1 > q->capacity) {
+        u32 new_cap = q->capacity * 2;
+        struct draw_cmd *new_data = realloc(q->cmds, new_cap);
+        if (!new_data) {
+            LOGM(WARN, "failed to reallocate draw cmds");
+            return;
+        }
+
+        q->capacity = new_cap;
+        q->cmds = new_data;
+    }
+
+    memcpy(&q->cmds[q->count++], cmd, sizeof(struct draw_cmd));
+}
+
+void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_BOX,
+        .pos = pos,
+        .scale = scale,
+        .box.color = color,
+    };
+
+    push_draw_cmd(c, &cmd);
+}
+
+void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
+    struct render_queue *q = &c->render_queue;
+    for (u32 i = 0; i < q->count; i++) {
+        struct draw_cmd *cmd = &q->cmds[i];
+
+        matrix translate_m;
+        math_matrix_translate(&translate_m, cmd->pos.x, cmd->pos.y, cmd->pos.z);
+
+        matrix scale_m;
+        math_matrix_scale(&scale_m, cmd->scale.x, cmd->scale.y, cmd->scale.z);
+
+        matrix m;
+        math_matrix_mul(&m, &translate_m, &scale_m);
+
+        switch (cmd->type) {
+        case DRAW_CMD_TYPE_BOX: {
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              c->pipeline.handle);
+
+            VkDeviceSize offsets[] = {0};
+            vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
+                                   &c->vertex_buffer.handle, offsets);
+
+            struct box_push_constant push_constant = {
+                .m = m,
+                .color = cmd->box.color,
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, c->pipeline.layout,
+                               VK_SHADER_STAGE_VERTEX_BIT, 0,
+                               sizeof(struct box_push_constant),
+                               &push_constant);
+            vkCmdDraw(data->cmd_buffer, 36, 1, 0, 0);
+        } break;
+        }
+    }
+    q->count = 0;
 }
 
 static bool record_cmd_buffer(struct rcontext *c) {
@@ -906,9 +1108,6 @@ static bool record_cmd_buffer(struct rcontext *c) {
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
                          NULL, 0, NULL, 1, &mem_barrier);
 
-    vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      c->pipeline.handle);
-
     VkViewport viewport = {
         .width = c->swapchain.extent.width,
         .height = c->swapchain.extent.height,
@@ -924,7 +1123,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
     vkCmdSetScissor(data->cmd_buffer, 0, 1, &scissor);
 
     VkClearValue clear_color = {
-        .color = {{0.0f, 0.0f, 0.0f, 1.0f}},
+        .color = {{0.0f, 0.0f, 0.0f, 0.0f}},
     };
 
     VkRenderingAttachmentInfo color_attachment_info = {
@@ -950,11 +1149,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     vkCmdBeginRendering(data->cmd_buffer, &render_info);
 
-    VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1, &c->vertex_buffer.handle,
-                           offsets);
-
-    vkCmdDraw(data->cmd_buffer, 3, 1, 0, 0);
+    render_draw_cmds(c, data);
 
     vkCmdEndRendering(data->cmd_buffer);
 
