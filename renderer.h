@@ -18,9 +18,12 @@ struct api_version {
 
 struct rcontext {
     VkInstance instance;
+    VkDebugUtilsMessengerEXT db_messenger;
+    VkSurfaceKHR surface;
 };
 
-bool renderer_init(struct rcontext *rctx);
+bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
+                   const char **exts, i32 n_layers, const char **layers);
 void renderer_deint(struct rcontext *rctx);
 
 #endif // RENDERER_H
