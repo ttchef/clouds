@@ -1,10 +1,10 @@
 
 #include "renderer.h"
 #include <GLFW/glfw3.h>
-#include <bits/pthreadtypes.h>
 #include <vulkan/vulkan_core.h>
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "log.h"
 
@@ -12,6 +12,10 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
+
+const f32 vertices[] = {
+    -0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, -0.5f, 0.0f,
+};
 
 static struct api_version get_api_version() {
     u32 instance_version;
@@ -628,6 +632,177 @@ static bool create_frame_data(struct rcontext *c) {
     return true;
 }
 
+static bool create_vma(struct rcontext *c) {
+    VmaAllocatorCreateInfo create_info = {
+        .physicalDevice = c->phy_dev,
+        .device = c->dev,
+        .instance = c->instance,
+    };
+
+    if (vmaCreateAllocator(&create_info, &c->allocator) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create vma");
+        return false;
+    }
+
+    return true;
+}
+
+static struct buffer create_device_local_buffer(struct rcontext *c,
+                                                VkDeviceSize size) {
+    struct buffer res = {0};
+
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .size = size,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+    };
+
+    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
+                        &res.alloc, NULL) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create device local buffer");
+        return res;
+    }
+
+    res.size = size;
+
+    return res;
+}
+
+static struct buffer
+create_staging_buffer(struct rcontext *c, VkDeviceSize size, const void *data) {
+    struct buffer res = {0};
+
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .usage =
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .size = size,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+    };
+
+    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
+                        &res.alloc, NULL) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create device local buffer");
+        return res;
+    }
+
+    res.size = size;
+
+    void *mapped;
+    vmaMapMemory(c->allocator, res.alloc, &mapped);
+    memcpy(mapped, data, size);
+    vmaUnmapMemory(c->allocator, res.alloc);
+
+    return res;
+}
+
+static bool copy_buffer(struct rcontext *c, struct buffer *staging,
+                        struct buffer *buffer) {
+    // dont handle at the moment
+    if (buffer->size != staging->size) {
+        LOGM(ERROR, "buffer size and staing buffer size are not equal");
+        return false;
+    }
+
+    VkCommandPool cmd_pool;
+    VkCommandBuffer cmd_buffer;
+
+    VkCommandPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = c->graphics_queue.index,
+    };
+
+    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &cmd_pool) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create one time use command pool for staging "
+                    "buffer copy");
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = cmd_pool,
+        .commandBufferCount = 1,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+    };
+
+    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create commnad buffer for staging buffer copy");
+        return false;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(
+            ERROR,
+            "failed to begin recording command buffer for staging buffer copy");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkBufferCopy region = {
+        .size = buffer->size,
+    };
+
+    vkCmdCopyBuffer(cmd_buffer, staging->handle, buffer->handle, 1, &region);
+
+    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
+        LOGM(ERROR,
+             "failed to end recording command buffer for staging buffer copy");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd_buffer,
+    };
+
+    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit command buffer for staging buffer copy");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to wait for queues");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+
+    return true;
+}
+
+static bool create_buffers(struct rcontext *c) {
+    VkDeviceSize vertex_buffer_size = ARRAY_COUNT(vertices) * sizeof(f32);
+    struct buffer staging =
+        create_staging_buffer(c, vertex_buffer_size, vertices);
+    c->vertex_buffer = create_device_local_buffer(c, vertex_buffer_size);
+    copy_buffer(c, &staging, &c->vertex_buffer);
+
+    return true;
+}
+
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers) {
     if (!create_instance(rctx, n_exts, exts, n_layers, layers)) {
@@ -681,6 +856,18 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created frame data");
+
+    if (!create_vma(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created vma");
+
+    if (!create_buffers(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created gpu buffers");
 
     return true;
 }
@@ -761,6 +948,10 @@ static bool record_cmd_buffer(struct rcontext *c) {
     };
 
     vkCmdBeginRendering(data->cmd_buffer, &render_info);
+
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1, &c->vertex_buffer.handle,
+                           offsets);
 
     vkCmdDraw(data->cmd_buffer, 3, 1, 0, 0);
 

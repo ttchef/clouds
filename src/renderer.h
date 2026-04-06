@@ -8,6 +8,8 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <vma/vma.h>
+
 #include "types.h"
 
 #define FRAMES_IN_FLIGHT 3
@@ -38,6 +40,12 @@ struct pipeline {
     VkPipelineLayout layout;
 };
 
+struct buffer {
+    VkBuffer handle;
+    VmaAllocation alloc;
+    VkDeviceSize size;
+};
+
 struct frame_data {
     VkSemaphore image_available;
     VkSemaphore finished;
@@ -47,6 +55,7 @@ struct frame_data {
 };
 
 struct rcontext {
+    VmaAllocator allocator;
     VkInstance instance;
     VkDebugUtilsMessengerEXT db_messenger;
     VkSurfaceKHR surface;
@@ -62,6 +71,8 @@ struct rcontext {
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
     u32 frame_idx;
     u32 img_idx;
+
+    struct buffer vertex_buffer;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
