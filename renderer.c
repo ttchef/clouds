@@ -698,6 +698,26 @@ static bool record_cmd_buffer(struct rcontext *c) {
         return false;
     }
 
+    VkImageMemoryBarrier mem_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = c->swapchain.imgs[c->img_idx],
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(data->cmd_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
+                         NULL, 0, NULL, 1, &mem_barrier);
+
     vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       c->pipeline.handle);
 
@@ -745,6 +765,25 @@ static bool record_cmd_buffer(struct rcontext *c) {
     vkCmdDraw(data->cmd_buffer, 3, 1, 0, 0);
 
     vkCmdEndRendering(data->cmd_buffer);
+
+    mem_barrier = (VkImageMemoryBarrier){
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .image = c->swapchain.imgs[c->img_idx],
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(data->cmd_buffer,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0,
+                         NULL, 1, &mem_barrier);
 
     if (vkEndCommandBuffer(data->cmd_buffer) != VK_SUCCESS) {
         LOGM(ERROR, "failed to end recording in the command buffer: %d",
@@ -824,6 +863,15 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
 
 void renderer_deint(struct rcontext *rctx) {
     vkDeviceWaitIdle(rctx->dev);
+
+    for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,
+                           NULL);
+        vkDestroySemaphore(rctx->dev, rctx->frame_data[i].finished, NULL);
+        vkDestroyFence(rctx->dev, rctx->frame_data[i].in_flight_fence, NULL);
+    }
+
+    vkDestroyCommandPool(rctx->dev, rctx->cmd_pool, NULL);
 
     vkDestroyPipelineLayout(rctx->dev, rctx->pipeline.layout, NULL);
     vkDestroyPipeline(rctx->dev, rctx->pipeline.handle, NULL);
