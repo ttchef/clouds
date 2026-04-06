@@ -11,6 +11,6 @@
 // the logger needs at least one error
 #define LOGGER_TYPES _X(ERROR, RANDOM, "random error")
 
-#include "logger.h"
+#include <logger/logger.h>
 
 #endif // LOG_H
