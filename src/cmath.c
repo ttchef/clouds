@@ -165,3 +165,27 @@ void math_matrix_orthographic(matrix *m, f32 left, f32 right, f32 bottom,
 void math_matrix_get_orthographic(u32 w, u32 h, matrix *m) {
     math_matrix_orthographic(m, 0.0f, w, h, 0.0f, -1.0f, 1.0f);
 }
+
+void math_matrix_get_perspective(f32 fov, f32 aspect, f32 near, f32 far,
+                                 matrix *m) {
+    f32 fov_scale = 1.0f / tanf(fov / 2.0);
+
+    *m = (matrix){.m = {
+                      -fov_scale / aspect,
+                      0.0f,
+                      0.0f,
+                      0.0f,
+                      0.0f,
+                      fov_scale,
+                      0.0f,
+                      0.0f,
+                      0.0f,
+                      0.0f,
+                      far / (near - far),
+                      -1.0f,
+                      0.0f,
+                      0.0f,
+                      (far * near) / (near - far),
+                      0.0f,
+                  }};
+}

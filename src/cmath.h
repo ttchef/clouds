@@ -80,5 +80,7 @@ void math_matrix_print(matrix *m);
 void math_matrix_orthographic(matrix *m, f32 left, f32 right, f32 bottom,
                               f32 top, f32 near, f32 far);
 void math_matrix_get_orthographic(u32 w, u32 h, matrix *m);
+void math_matrix_get_perspective(f32 fov, f32 aspect, f32 near, f32 far,
+                                 matrix *m);
 
 #endif // CMAHTH_H

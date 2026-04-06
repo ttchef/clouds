@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cmath.h"
 #include "log.h"
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
@@ -1038,6 +1039,12 @@ void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
 
 void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
     struct render_queue *q = &c->render_queue;
+
+    matrix cam_m;
+    f32 aspect =
+        (f32)c->swapchain.extent.width / (f32)c->swapchain.extent.height;
+    math_matrix_get_perspective(50, aspect, 0.1f, 100.0f, &cam_m);
+
     for (u32 i = 0; i < q->count; i++) {
         struct draw_cmd *cmd = &q->cmds[i];
 
@@ -1047,8 +1054,11 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         matrix scale_m;
         math_matrix_scale(&scale_m, cmd->scale.x, cmd->scale.y, cmd->scale.z);
 
+        matrix model;
+        math_matrix_mul(&model, &translate_m, &scale_m);
+
         matrix m;
-        math_matrix_mul(&m, &translate_m, &scale_m);
+        math_matrix_mul(&m, &cam_m, &model);
 
         switch (cmd->type) {
         case DRAW_CMD_TYPE_BOX: {
