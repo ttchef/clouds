@@ -115,12 +115,102 @@ static bool create_phy_dev(struct rcontext *c) {
     VkPhysicalDevice devs[8];
     vkEnumeratePhysicalDevices(c->instance, &n_phys_dev, devs);
 
-    // TODO: actuall check the features of the GPU
-    c->phy_dev = devs[0];
+    for (i32 i = 0; i < n_phys_dev; i++) {
+        VkPhysicalDevice dev = devs[i];
+        u32 n_queues;
+        vkGetPhysicalDeviceQueueFamilyProperties(dev, &n_queues, NULL);
+
+        VkQueueFamilyProperties props[8];
+        vkGetPhysicalDeviceQueueFamilyProperties(dev, &n_queues, props);
+
+        i32 graphics_queue_family_index = -1;
+        i32 present_queue_family_index = -1;
+
+        for (i32 j = 0; j < n_queues; j++) {
+            if (props[j].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                graphics_queue_family_index = j;
+            }
+
+            VkBool32 supported = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(dev, j, c->surface,
+                                                 &supported);
+            if (supported) {
+                present_queue_family_index = j;
+                if (graphics_queue_family_index != -1)
+                    break;
+            }
+        }
+
+        if (graphics_queue_family_index != -1 &&
+            present_queue_family_index != -1) {
+
+            c->phy_dev = devs[i];
+            c->present_queue.index = present_queue_family_index;
+            c->graphics_queue.index = graphics_queue_family_index;
+
+            break;
+        } else if (i == n_phys_dev - 1) {
+            LOGM(ERROR, "failed to find sutable GPU");
+            return false;
+        }
+    }
 
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(c->phy_dev, &props);
     LOGM(INFO, "picked GPU: %s", props.deviceName);
+
+    return true;
+}
+
+static bool create_log_dev(struct rcontext *c) {
+    VkDeviceQueueCreateInfo queue_infos[2];
+
+    float priority = 1.0f;
+
+    u32 n_queues = 0;
+    queue_infos[n_queues++] = (VkDeviceQueueCreateInfo){
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = c->graphics_queue.index,
+        .queueCount = 1,
+        .pQueuePriorities = &priority,
+    };
+
+    if (c->graphics_queue.index != c->present_queue.index) {
+        queue_infos[n_queues++] = (VkDeviceQueueCreateInfo){
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = c->present_queue.index,
+            .queueCount = 1,
+            .pQueuePriorities = &priority,
+        };
+    }
+
+    const char *device_exts[] = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    };
+
+    VkPhysicalDeviceDynamicRenderingFeatures dym_rendering = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+        .dynamicRendering = true,
+    };
+
+    VkDeviceCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = &dym_rendering,
+        .pQueueCreateInfos = queue_infos,
+        .queueCreateInfoCount = n_queues,
+        .enabledExtensionCount = 1,
+        .ppEnabledExtensionNames = device_exts,
+    };
+
+    if (vkCreateDevice(c->phy_dev, &create_info, NULL, &c->dev) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create logical device");
+        return false;
+    }
+
+    vkGetDeviceQueue(c->dev, c->graphics_queue.index, 0,
+                     &c->graphics_queue.handle);
+    vkGetDeviceQueue(c->dev, c->present_queue.index, 0,
+                     &c->present_queue.handle);
 
     return true;
 }
@@ -150,6 +240,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created physical device");
+
+    if (!create_log_dev(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created logical device");
 
     return true;
 }

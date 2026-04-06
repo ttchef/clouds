@@ -16,11 +16,19 @@ struct api_version {
     u32 patch;
 };
 
+struct queue {
+    VkQueue handle;
+    i32 index;
+};
+
 struct rcontext {
     VkInstance instance;
     VkDebugUtilsMessengerEXT db_messenger;
     VkSurfaceKHR surface;
     VkPhysicalDevice phy_dev;
+    VkDevice dev;
+    struct queue graphics_queue;
+    struct queue present_queue;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
