@@ -12,6 +12,11 @@ struct context {
     struct rcontext rctx;
 };
 
+void glfw_resize_callback(GLFWwindow *window, i32 w, i32 h) {
+    struct context *ctx = glfwGetWindowUserPointer(window);
+    renderer_resize(&ctx->rctx, (u32)w, (u32)h);
+}
+
 i32 main(void) {
     struct context ctx;
 
@@ -49,6 +54,9 @@ i32 main(void) {
         glfwTerminate();
         return 1;
     }
+
+    glfwSetWindowUserPointer(ctx.window, &ctx);
+    glfwSetWindowSizeCallback(ctx.window, glfw_resize_callback);
 
     while (!glfwWindowShouldClose(ctx.window)) {
         renderer_draw(&ctx.rctx, ctx.window);

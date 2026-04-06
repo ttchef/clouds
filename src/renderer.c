@@ -224,7 +224,7 @@ static bool create_log_dev(struct rcontext *c) {
     return true;
 }
 
-static bool create_swapchain(struct rcontext *c, GLFWwindow *window) {
+static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
     VkSurfaceCapabilitiesKHR caps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(c->phy_dev, c->surface, &caps);
 
@@ -256,9 +256,6 @@ static bool create_swapchain(struct rcontext *c, GLFWwindow *window) {
             break;
         }
     }
-
-    i32 w, h;
-    glfwGetWindowSize(window, &w, &h);
 
     VkExtent2D extent = (VkExtent2D){
         .width = w,
@@ -799,6 +796,7 @@ static bool create_buffers(struct rcontext *c) {
         create_staging_buffer(c, vertex_buffer_size, vertices);
     c->vertex_buffer = create_device_local_buffer(c, vertex_buffer_size);
     copy_buffer(c, &staging, &c->vertex_buffer);
+    vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
 
     return true;
 }
@@ -839,7 +837,10 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created logical device");
 
-    if (!create_swapchain(rctx, window)) {
+    i32 w, h;
+    glfwGetWindowSize(window, &w, &h);
+
+    if (!create_swapchain(rctx, (u32)w, (u32)h)) {
         return false;
     }
 
@@ -901,7 +902,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
         .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
     };
 
-    vkCmdPipelineBarrier(data->cmd_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+    vkCmdPipelineBarrier(data->cmd_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
                          NULL, 0, NULL, 1, &mem_barrier);
 
@@ -985,6 +986,13 @@ static bool record_cmd_buffer(struct rcontext *c) {
     return true;
 }
 
+bool renderer_resize(struct rcontext *c, u32 w, u32 h) {
+    vkDeviceWaitIdle(c->dev);
+    destroy_swapchain(c);
+    create_swapchain(c, w, h);
+    return true;
+}
+
 bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
     struct frame_data *data = &c->frame_data[c->frame_idx];
 
@@ -995,10 +1003,10 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
                                          UINT64_MAX, data->image_available,
                                          VK_NULL_HANDLE, &c->img_idx);
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        // recreate swapchain
-        vkDeviceWaitIdle(c->dev);
-        destroy_swapchain(c);
-        create_swapchain(c, window);
+        i32 w, h;
+        glfwGetWindowSize(window, &w, &h);
+
+        renderer_resize(c, (u32)w, (u32)h);
         return true; // no error
     } else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) {
         LOGM(ERROR, "failed to acquire swapchain image");
@@ -1016,12 +1024,17 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
         data->finished,
     };
 
+    VkPipelineStageFlags wait_stages[] = {
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+
     VkSubmitInfo sub_info = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .commandBufferCount = 1,
         .pCommandBuffers = &data->cmd_buffer,
         .waitSemaphoreCount = ARRAY_COUNT(wait_semaphors),
         .pWaitSemaphores = wait_semaphors,
+        .pWaitDstStageMask = wait_stages,
         .signalSemaphoreCount = ARRAY_COUNT(signal_semphors),
         .pSignalSemaphores = signal_semphors,
     };
@@ -1054,6 +1067,9 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
 
 void renderer_deint(struct rcontext *rctx) {
     vkDeviceWaitIdle(rctx->dev);
+
+    vmaDestroyBuffer(rctx->allocator, rctx->vertex_buffer.handle,
+                     rctx->vertex_buffer.alloc);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,
