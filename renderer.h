@@ -31,6 +31,11 @@ struct swapchain {
     u32 n_imgs;
 };
 
+struct pipeline {
+    VkPipeline handle;
+    VkPipelineLayout layout;
+};
+
 struct rcontext {
     VkInstance instance;
     VkDebugUtilsMessengerEXT db_messenger;
@@ -40,6 +45,7 @@ struct rcontext {
     struct queue graphics_queue;
     struct queue present_queue;
     struct swapchain swapchain;
+    struct pipeline pipeline;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
