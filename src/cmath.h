@@ -64,23 +64,32 @@ vec2 math_vec2_mul_matrix(vec2 v, matrix *m);
 vec2i math_vec2_to_vec2i(vec2 v);
 vec2 math_vec2i_to_vec2(vec2i v);
 
-void math_matrix_identity(matrix *m);
-void math_matrix_translate(matrix *m, f32 x, f32 y, f32 z);
-void math_matrix_scale(matrix *m, f32 x, f32 y, f32 z);
+vec3 math_vec3_add(vec3 a, vec3 b);
+vec3 math_vec3_subtract(vec3 a, vec3 b);
+vec3 math_vec3_mul(vec3 a, vec3 b); // wedge product
+vec3 math_vec3_scale(vec3 v, f32 scalar);
+f32 math_vec3_length(vec3 v);
+vec3 math_vec3_norm(vec3 v);
+vec3 math_vec3_cross(vec3 a, vec3 b);
+
+matrix math_matrix_identity();
+matrix math_matrix_translate(f32 x, f32 y, f32 z);
+matrix math_matrix_scale(f32 x, f32 y, f32 z);
 
 /* Angle in degrees */
-void math_matrix_rotate_2d(matrix *m, f32 angle);
-void math_matrix_mul(matrix *out, matrix *a, matrix *b);
+matrix math_matrix_rotate_2d(f32 angle);
+matrix math_matrix_mul(const matrix a, const matrix b);
 
 /* utility */
 void math_vec2_print(vec2 v);
+void math_vec3_print(vec3 v);
 void math_vec4_print(vec4 v);
 void math_matrix_print(matrix *m);
 
-void math_matrix_orthographic(matrix *m, f32 left, f32 right, f32 bottom,
-                              f32 top, f32 near, f32 far);
-void math_matrix_get_orthographic(u32 w, u32 h, matrix *m);
-void math_matrix_get_perspective(f32 fov, f32 aspect, f32 near, f32 far,
-                                 matrix *m);
+matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
+                                f32 near, f32 far);
+matrix math_matrix_get_orthographic(u32 w, u32 h, matrix *m);
+matrix math_matrix_get_perspective(f32 fov, f32 aspect, f32 near, f32 far);
+matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up);
 
 #endif // CMAHTH_H

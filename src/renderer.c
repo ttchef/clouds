@@ -596,9 +596,9 @@ static bool create_pipeline(struct rcontext *c) {
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthBoundsTestEnable = VK_TRUE,
-        .depthWriteEnable = VK_TRUE,
-        .depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL,
+        .depthTestEnable = VK_FALSE,
+        .depthWriteEnable = VK_FALSE,
+        .depthCompareOp = VK_COMPARE_OP_LESS,
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f,
     };
@@ -1005,6 +1005,11 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     rctx->render_queue.cmds =
         malloc(sizeof(struct draw_cmd) * rctx->render_queue.capacity);
 
+    // camera
+    rctx->cam.pos = (vec3){0.0f, 0.0f, 0.0f};
+    rctx->cam.direction = (vec3){0.0f, 0.0f, 1.0f};
+    rctx->cam.speed = 5.0f;
+
     return true;
 }
 
@@ -1013,7 +1018,8 @@ static void push_draw_cmd(struct rcontext *c, struct draw_cmd *cmd) {
 
     if (q->count + 1 > q->capacity) {
         u32 new_cap = q->capacity * 2;
-        struct draw_cmd *new_data = realloc(q->cmds, new_cap);
+        struct draw_cmd *new_data =
+            realloc(q->cmds, sizeof(struct draw_cmd) * new_cap);
         if (!new_data) {
             LOGM(WARN, "failed to reallocate draw cmds");
             return;
@@ -1040,25 +1046,25 @@ void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
 void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
     struct render_queue *q = &c->render_queue;
 
-    matrix cam_m;
     f32 aspect =
         (f32)c->swapchain.extent.width / (f32)c->swapchain.extent.height;
-    math_matrix_get_perspective(50, aspect, 0.1f, 100.0f, &cam_m);
+    matrix perspective = math_matrix_get_perspective(50, aspect, 0.1f, 100.0f);
+
+    matrix view = math_matrix_look_at(
+        c->cam.pos, math_vec3_add(c->cam.pos, c->cam.direction),
+        (vec3){0.0f, 1.0f, 0.0f});
 
     for (u32 i = 0; i < q->count; i++) {
         struct draw_cmd *cmd = &q->cmds[i];
 
-        matrix translate_m;
-        math_matrix_translate(&translate_m, cmd->pos.x, cmd->pos.y, cmd->pos.z);
+        matrix translate_m =
+            math_matrix_translate(cmd->pos.x, cmd->pos.y, cmd->pos.z);
+        matrix scale_m =
+            math_matrix_scale(cmd->scale.x, cmd->scale.y, cmd->scale.z);
+        matrix model = math_matrix_mul(translate_m, scale_m);
 
-        matrix scale_m;
-        math_matrix_scale(&scale_m, cmd->scale.x, cmd->scale.y, cmd->scale.z);
-
-        matrix model;
-        math_matrix_mul(&model, &translate_m, &scale_m);
-
-        matrix m;
-        math_matrix_mul(&m, &cam_m, &model);
+        matrix perspective_view = math_matrix_mul(perspective, view);
+        matrix m = math_matrix_mul(perspective_view, model);
 
         switch (cmd->type) {
         case DRAW_CMD_TYPE_BOX: {
@@ -1270,6 +1276,30 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
     c->frame_idx = (c->frame_idx + 1) % FRAMES_IN_FLIGHT;
 
     return true;
+}
+
+void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
+    struct camera *cam = &c->cam;
+
+    vec3 up = {0.0f, 1.0f, 0.0f};
+    vec3 right = math_vec3_norm(math_vec3_cross(cam->direction, up));
+
+    if (glfwGetKey(window, GLFW_KEY_W) != GLFW_RELEASE) {
+        cam->pos = math_vec3_subtract(
+            cam->pos, math_vec3_scale(cam->direction, cam->speed * dt));
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) != GLFW_RELEASE) {
+        cam->pos = math_vec3_add(
+            cam->pos, math_vec3_scale(cam->direction, cam->speed * dt));
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) != GLFW_RELEASE) {
+        cam->pos = math_vec3_subtract(cam->pos,
+                                      math_vec3_scale(right, cam->speed * dt));
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) != GLFW_RELEASE) {
+        cam->pos =
+            math_vec3_add(cam->pos, math_vec3_scale(right, cam->speed * dt));
+    }
 }
 
 void renderer_deint(struct rcontext *rctx) {

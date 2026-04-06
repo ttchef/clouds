@@ -58,8 +58,17 @@ i32 main(void) {
     glfwSetWindowUserPointer(ctx.window, &ctx);
     glfwSetWindowSizeCallback(ctx.window, glfw_resize_callback);
 
+    f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(ctx.window)) {
-        renderer_push_box(&ctx.rctx, (vec3){0.0, 0.1, -1.5f},
+        f32 current_time = glfwGetTime();
+        f32 dt = current_time - last_time;
+        last_time = current_time;
+
+        renderer_update_cam(&ctx.rctx, ctx.window, dt);
+
+        renderer_push_box(&ctx.rctx, (vec3){0.3, 0.0, -1.5f},
+                          (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
+        renderer_push_box(&ctx.rctx, (vec3){-0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
         renderer_draw(&ctx.rctx, ctx.window);
         glfwPollEvents();

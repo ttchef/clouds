@@ -87,6 +87,15 @@ struct render_queue {
     struct draw_cmd *cmds;
 };
 
+struct camera {
+    f32 speed;
+    f32 sensitivity;
+
+    vec2 last_mouse_pos;
+    vec3 pos;
+    vec3 direction;
+};
+
 struct rcontext {
     VmaAllocator allocator;
     VkInstance instance;
@@ -108,6 +117,7 @@ struct rcontext {
 
     struct buffer vertex_buffer;
     struct render_queue render_queue;
+    struct camera cam;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
@@ -115,6 +125,7 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 bool renderer_resize(struct rcontext *rctx, u32 w, u32 h);
 void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
+void renderer_update_cam(struct rcontext *rctx, GLFWwindow *window, f32 dt);
 void renderer_deint(struct rcontext *rctx);
 
 #endif // RENDERER_H
