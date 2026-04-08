@@ -626,6 +626,13 @@ error_path:
     return false;
 }
 
+static void destroy_pipeline(struct rcontext *c, struct pipeline *pipeline) {
+    vkDestroyDescriptorPool(c->dev, pipeline->desc_pool, NULL);
+    vkDestroyDescriptorSetLayout(c->dev, pipeline->desc_layout, NULL);
+    vkDestroyPipelineLayout(c->dev, pipeline->layout, NULL);
+    vkDestroyPipeline(c->dev, pipeline->handle, NULL);
+}
+
 static bool create_frame_data(struct rcontext *c) {
     c->frame_idx = 0;
     c->img_idx = 0;
@@ -1916,6 +1923,12 @@ void renderer_destroy_model(struct rcontext *c, model_id id) {
 void renderer_deint(struct rcontext *rctx) {
     vkDeviceWaitIdle(rctx->dev);
 
+    vkDestroySampler(rctx->dev, rctx->sampler, NULL);
+
+    for (u32 i = 0; i < darrayLength(rctx->models); i++) {
+        destroy_image(rctx, &rctx->models[i].image);
+    }
+
     darrayDestroy(rctx->models);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
@@ -1927,8 +1940,8 @@ void renderer_deint(struct rcontext *rctx) {
 
     vkDestroyCommandPool(rctx->dev, rctx->cmd_pool, NULL);
 
-    vkDestroyPipelineLayout(rctx->dev, rctx->model_color_pip.layout, NULL);
-    vkDestroyPipeline(rctx->dev, rctx->model_color_pip.handle, NULL);
+    destroy_pipeline(rctx, &rctx->model_color_pip);
+    destroy_pipeline(rctx, &rctx->model_texture_pip);
 
     destroy_swapchain(rctx);
     vkDestroySurfaceKHR(rctx->instance, rctx->surface, NULL);
