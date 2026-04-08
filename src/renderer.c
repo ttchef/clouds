@@ -546,7 +546,7 @@ static bool create_pipeline(struct rcontext *c) {
         .lineWidth = 1.0f,
         .depthClampEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_NONE,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
     };
@@ -1007,6 +1007,18 @@ void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
     push_draw_cmd(c, &cmd);
 }
 
+void renderer_push_model(struct rcontext *c, vec3 pos, vec3 scale,
+                         model_id model) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_MODEL,
+        .pos = pos,
+        .scale = scale,
+        .model.id = model,
+    };
+
+    push_draw_cmd(c, &cmd);
+}
+
 void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
     struct render_queue *q = &c->render_queue;
 
@@ -1045,7 +1057,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                                  VK_INDEX_TYPE_UINT16);
 
             struct box_push_constant push_constant = {
-                .m = m,
+                .m = m, // matrix
                 .color = cmd->box.color,
             };
 
@@ -1055,6 +1067,31 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                                &push_constant);
             vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1,
                              0, 0, 0);
+        } break;
+        case DRAW_CMD_TYPE_MODEL: {
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              c->pipeline.handle);
+
+            VkDeviceSize offsets[] = {0};
+
+            vkCmdBindVertexBuffers(
+                data->cmd_buffer, 0, 1,
+                &c->models[cmd->model.id].vertex_buffer.handle, offsets);
+            vkCmdBindIndexBuffer(data->cmd_buffer,
+                                 c->models[cmd->model.id].index_buffer.handle,
+                                 0, VK_INDEX_TYPE_UINT16);
+
+            struct box_push_constant push_constant = {
+                .m = m, // matrix
+                .color = cmd->box.color,
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, c->pipeline.layout,
+                               VK_SHADER_STAGE_VERTEX_BIT, 0,
+                               sizeof(struct box_push_constant),
+                               &push_constant);
+            vkCmdDrawIndexed(data->cmd_buffer, c->models[cmd->model.id].n_index,
+                             1, 0, 0, 0);
         } break;
         }
     }
@@ -1381,7 +1418,7 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     }
 
     // TODO: path
-    error = cgltf_load_buffers(&options, data, "assets/meshes");
+    error = cgltf_load_buffers(&options, data, "assets/models");
     if (error != cgltf_result_success) {
         LOGM(ERROR, "failed to load gltf model bufffers: %s", filepath);
         cgltf_free(data);

@@ -60,6 +60,10 @@ i32 main(void) {
     glfwSetWindowUserPointer(ctx.window, &ctx);
     glfwSetWindowSizeCallback(ctx.window, glfw_resize_callback);
 
+    // loading of a model
+    model_id boom_box =
+        renderer_create_model(&ctx.rctx, "assets/models/BoomBox.glb");
+
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(ctx.window)) {
         f32 current_time = glfwGetTime();
@@ -70,8 +74,13 @@ i32 main(void) {
 
         renderer_push_box(&ctx.rctx, (vec3){0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
+
         renderer_push_box(&ctx.rctx, (vec3){-0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
+
+        renderer_push_model(&ctx.rctx, (vec3){0.0, 0.0, -3.0f},
+                            (vec3){10, 10, 10}, boom_box);
+
         renderer_draw(&ctx.rctx, ctx.window);
         glfwPollEvents();
     }

@@ -151,6 +151,9 @@ bool renderer_resize(struct rcontext *rctx, u32 w, u32 h);
 
 void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
 
+void renderer_push_model(struct rcontext *rctx, vec3 pos, vec3 scale,
+                         model_id model);
+
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 
 void renderer_update_cam(struct rcontext *rctx, GLFWwindow *window, f32 dt);
