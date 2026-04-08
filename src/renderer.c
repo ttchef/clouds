@@ -460,14 +460,14 @@ static bool create_shader_module(struct rcontext *c, VkShaderModule *module,
 static bool create_pipeline(struct rcontext *c) {
     // TODO: not hardcoded paths
     VkShaderModule vert_module;
-    if (!create_shader_module(c, &vert_module, "shaders/vert.spv")) {
+    if (!create_shader_module(c, &vert_module, "build/spv/box-vert.spv")) {
         return false;
     }
 
     LOGM(API_DUMP, "created vertex shader module");
 
     VkShaderModule frag_module;
-    if (!create_shader_module(c, &frag_module, "shaders/frag.spv")) {
+    if (!create_shader_module(c, &frag_module, "build/spv/box-frag.spv")) {
         return false;
     }
 
