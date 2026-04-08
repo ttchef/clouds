@@ -72,6 +72,9 @@ i32 main(void) {
 
         renderer_update_cam(&ctx.rctx, ctx.window, dt);
 
+        renderer_push_box(&ctx.rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
+                          (vec4){0.2, 0.5, 0.8, 1.0});
+
         renderer_push_box(&ctx.rctx, (vec3){0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
 

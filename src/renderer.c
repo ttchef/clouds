@@ -1273,7 +1273,7 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     // models
     rctx->models = darrayCreate(struct model);
-    rctx->box_id = renderer_create_model(rctx, "assets/models/monkey.glb");
+    rctx->box_id = renderer_create_model(rctx, "assets/models/box.glb");
 
     return true;
 }
@@ -1853,13 +1853,13 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
 
     // texture
     if (data->materials_count != 1) {
-        LOGM(WARN, "Material has no texture: %s", filepath);
+        LOGM(WARN, "model has no texture: %s", filepath);
         goto end;
     }
 
     cgltf_material *material = &data->materials[0];
     if (!material->has_pbr_metallic_roughness) {
-        LOGM(WARN, "Material has no texture: %s", filepath);
+        LOGM(WARN, "model has no texture: %s", filepath);
         goto end;
     }
 
@@ -1868,7 +1868,7 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
 
     if (albedo_texture_view.has_transform ||
         albedo_texture_view.texcoord != 0 || !albedo_texture_view.texture) {
-        LOGM(WARN, "Material has no texture: %s", filepath);
+        LOGM(WARN, "model has no texture: %s", filepath);
         goto end;
     }
 
@@ -1876,7 +1876,7 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
 
     cgltf_buffer_view *buffer_view = albedo_texture->image->buffer_view;
     if (buffer_view->size >= INT32_MAX) {
-        LOGM(WARN, "Material has no texture: %s", filepath);
+        LOGM(WARN, "model has no texture: %s", filepath);
         goto end;
     }
 
