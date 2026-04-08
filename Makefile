@@ -4,7 +4,7 @@ SRC_DIR := src
 BUILD_DIR := build
 
 CC := gcc
-CFLAGS := -Wall -Wextra -std=c11 -g -I$(LIBS_DIR)
+CFLAGS := -Wall -Wextra -std=c23 -g -I$(LIBS_DIR)
 LDFLAGS := -lglfw -lvulkan -lstdc++ -lm
 
 SRC_FILES := $(wildcard src/*.c)

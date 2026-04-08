@@ -63,7 +63,7 @@ struct frame_data {
     VkCommandBuffer cmd_buffer;
 };
 
-typedef u32 texture_id;
+typedef u32 model_id;
 
 struct model {
     struct buffer vertex_buffer;
@@ -73,7 +73,7 @@ struct model {
 
 enum {
     DRAW_CMD_TYPE_BOX,
-    DRAW_CMD_TYPE_TEXTURE_BOX,
+    DRAW_CMD_TYPE_MODEL,
 };
 
 struct draw_cmd {
@@ -87,8 +87,8 @@ struct draw_cmd {
         } box;
 
         struct {
-            texture_id id;
-        } texture_box;
+            model_id id;
+        } model;
     };
 };
 
@@ -136,7 +136,9 @@ struct rcontext {
     u32 frame_idx;
     u32 img_idx;
 
-    struct model box_model;
+    // dynamic array (darray.h)
+    struct model *models;
+    model_id box_id;
 
     struct render_queue render_queue;
     struct camera cam;
@@ -153,9 +155,9 @@ bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 
 void renderer_update_cam(struct rcontext *rctx, GLFWwindow *window, f32 dt);
 
-bool renderer_create_model(struct rcontext *rctx, const char *filepath,
-                           struct model *model);
-void renderer_destroy_model(struct rcontext *rctx, struct model *model);
+model_id renderer_create_model(struct rcontext *rctx, const char *filepath);
+
+void renderer_destroy_model(struct rcontext *rctx, model_id id);
 
 void renderer_deint(struct rcontext *rctx);
 

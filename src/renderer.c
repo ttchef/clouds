@@ -10,6 +10,7 @@
 #include <cgltf/cgltf.h>
 
 #include "cmath.h"
+#include "darray.h"
 #include "log.h"
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
@@ -967,10 +968,11 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     rctx->cam.pos = (vec3){0.0f, 0.0f, 0.0f};
     rctx->cam.direction = (vec3){0.0f, 0.0f, 1.0f};
     rctx->cam.speed = 5.0f;
-    rctx->cam.sensitivity = 0.27f;
+    rctx->cam.sensitivity = 0.15f;
 
-    // box model
-    renderer_create_model(rctx, "assets/models/monkey.glb", &rctx->box_model);
+    // models
+    rctx->models = darrayCreate(struct model);
+    rctx->box_id = renderer_create_model(rctx, "assets/models/monkey.glb");
 
     return true;
 }
@@ -1034,10 +1036,12 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                               c->pipeline.handle);
 
             VkDeviceSize offsets[] = {0};
+
             vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
-                                   &c->box_model.vertex_buffer.handle, offsets);
+                                   &c->models[c->box_id].vertex_buffer.handle,
+                                   offsets);
             vkCmdBindIndexBuffer(data->cmd_buffer,
-                                 c->box_model.index_buffer.handle, 0,
+                                 c->models[c->box_id].index_buffer.handle, 0,
                                  VK_INDEX_TYPE_UINT16);
 
             struct box_push_constant push_constant = {
@@ -1049,8 +1053,8 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                                VK_SHADER_STAGE_VERTEX_BIT, 0,
                                sizeof(struct box_push_constant),
                                &push_constant);
-            vkCmdDrawIndexed(data->cmd_buffer, c->box_model.n_index, 1, 0, 0,
-                             0);
+            vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1,
+                             0, 0, 0);
         } break;
         }
     }
@@ -1364,15 +1368,16 @@ static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
     }
 }
 
-bool renderer_create_model(struct rcontext *c, const char *filepath,
-                           struct model *model) {
+model_id renderer_create_model(struct rcontext *c, const char *filepath) {
+    struct model model = {0};
+
     cgltf_options options = {0};
     cgltf_data *data = NULL;
 
     cgltf_result error = cgltf_parse_file(&options, filepath, &data);
     if (error != cgltf_result_success) {
         LOGM(ERROR, "failed to load gltf model: %s", filepath);
-        return false;
+        return -1;
     }
 
     // TODO: path
@@ -1380,7 +1385,7 @@ bool renderer_create_model(struct rcontext *c, const char *filepath,
     if (error != cgltf_result_success) {
         LOGM(ERROR, "failed to load gltf model bufffers: %s", filepath);
         cgltf_free(data);
-        return false;
+        return -1;
     }
 
     // check for unsupported model (that my program cant handle rn xD)
@@ -1396,11 +1401,11 @@ bool renderer_create_model(struct rcontext *c, const char *filepath,
     u64 index_data_size = p->indices->buffer_view->size;
     void *index_data = buffer_base + p->indices->buffer_view->offset;
 
-    model->index_buffer = create_device_local_buffer(
+    model.index_buffer = create_device_local_buffer(
         c, index_data_size,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-    upload_data_to_buffer(c, &model->index_buffer, index_data_size, index_data);
-    model->n_index = p->indices->count;
+    upload_data_to_buffer(c, &model.index_buffer, index_data_size, index_data);
+    model.n_index = p->indices->count;
 
     // vertex buffer
     // pos (3) uv (2) normals (3)
@@ -1435,18 +1440,23 @@ bool renderer_create_model(struct rcontext *c, const char *filepath,
         }
     }
 
-    model->vertex_buffer = create_device_local_buffer(
+    model.vertex_buffer = create_device_local_buffer(
         c, vertex_data_size,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-    upload_data_to_buffer(c, &model->vertex_buffer, vertex_data_size,
+    upload_data_to_buffer(c, &model.vertex_buffer, vertex_data_size,
                           vertex_data);
 
     cgltf_free(data);
 
-    return true;
+    model_id id = darrayLength(c->models);
+    darrayPush(c->models, model);
+
+    return id;
 }
 
-void renderer_destroy_model(struct rcontext *c, struct model *model) {
+void renderer_destroy_model(struct rcontext *c, model_id id) {
+    struct model *model = &c->models[id];
+
     vmaDestroyBuffer(c->allocator, model->vertex_buffer.handle,
                      model->vertex_buffer.alloc);
     vmaDestroyBuffer(c->allocator, model->index_buffer.handle,
@@ -1457,8 +1467,7 @@ void renderer_destroy_model(struct rcontext *c, struct model *model) {
 void renderer_deint(struct rcontext *rctx) {
     vkDeviceWaitIdle(rctx->dev);
 
-    // box model
-    renderer_destroy_model(rctx, &rctx->box_model);
+    darrayDestroy(rctx->models);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,
