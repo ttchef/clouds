@@ -6,3 +6,4 @@ Cloud Rendering using vulkan
 - cgltf
 - glfw
 - vulkan
+- stbi

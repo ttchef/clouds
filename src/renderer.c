@@ -1913,6 +1913,10 @@ end:
 void renderer_destroy_model(struct rcontext *c, model_id id) {
     struct model *model = &c->models[id];
 
+    if (model->has_image) {
+        destroy_image(c, &model->image);
+    }
+
     vmaDestroyBuffer(c->allocator, model->vertex_buffer.handle,
                      model->vertex_buffer.alloc);
     vmaDestroyBuffer(c->allocator, model->index_buffer.handle,
@@ -1926,7 +1930,7 @@ void renderer_deint(struct rcontext *rctx) {
     vkDestroySampler(rctx->dev, rctx->sampler, NULL);
 
     for (u32 i = 0; i < darrayLength(rctx->models); i++) {
-        destroy_image(rctx, &rctx->models[i].image);
+        renderer_destroy_model(rctx, i);
     }
 
     darrayDestroy(rctx->models);
@@ -1945,6 +1949,9 @@ void renderer_deint(struct rcontext *rctx) {
 
     destroy_swapchain(rctx);
     vkDestroySurfaceKHR(rctx->instance, rctx->surface, NULL);
+
+    vmaDestroyAllocator(rctx->allocator);
+    vkDestroyDevice(rctx->dev, NULL);
 
     PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT =
         (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
