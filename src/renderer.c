@@ -14,134 +14,6 @@
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
-const f32 vertices[] = {
-    // Front
-    -0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-
-    0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-
-    // Back
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-
-    0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-
-    // Left
-    -0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-
-    // Right
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-
-    0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-
-    // Top
-    -0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-
-    // Bottom
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-
-    0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-    -0.5f,
-    0.5f,
-    -0.5f,
-    -0.5f,
-};
-
 static struct api_version get_api_version() {
     u32 instance_version;
     if (vkEnumerateInstanceVersion(&instance_version) != VK_SUCCESS) {
@@ -349,6 +221,61 @@ static bool create_log_dev(struct rcontext *c) {
     return true;
 }
 
+static bool create_image(struct rcontext *c, struct image *image, u32 width,
+                         u32 height, VkFormat fmt, VkImageUsageFlags usage) {
+    VkImageCreateInfo image_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .extent = (VkExtent3D){width, height, 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = fmt,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = usage,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+    };
+
+    if (vmaCreateImage(c->allocator, &image_create_info, &alloc_info,
+                       &image->handle, &image->alloc, NULL) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create vulkan image");
+        return false;
+    }
+
+    VkImageViewCreateInfo view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image->handle,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = fmt,
+        .subresourceRange =
+            {
+                .aspectMask = fmt == VK_FORMAT_D32_SFLOAT
+                                  ? VK_IMAGE_ASPECT_DEPTH_BIT
+                                  : VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+    };
+
+    if (vkCreateImageView(c->dev, &view_create_info, NULL, &image->view) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create vulkan image");
+        return false;
+    }
+
+    return true;
+}
+
+static void destroy_image(struct rcontext *c, struct image *image) {
+    vkDestroyImageView(c->dev, image->view, NULL);
+    vmaDestroyImage(c->allocator, image->handle, image->alloc);
+}
+
 static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
     VkSurfaceCapabilitiesKHR caps;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(c->phy_dev, c->surface, &caps);
@@ -429,6 +356,8 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
     vkGetSwapchainImagesKHR(c->dev, c->swapchain.handle, &c->swapchain.n_imgs,
                             c->swapchain.imgs);
     c->swapchain.imgs_views = calloc(c->swapchain.n_imgs, sizeof(VkImageView));
+    c->swapchain.depth_images =
+        calloc(c->swapchain.n_imgs, sizeof(struct image));
 
     for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
         VkImageViewCreateInfo create_info = {
@@ -456,6 +385,10 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
 
             return false;
         }
+
+        create_image(c, &c->swapchain.depth_images[i], w, h,
+                     VK_FORMAT_D32_SFLOAT,
+                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
     }
 
     return true;
@@ -466,12 +399,18 @@ static void destroy_swapchain(struct rcontext *c) {
         free(c->swapchain.imgs);
     }
 
-    for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
-        vkDestroyImageView(c->dev, c->swapchain.imgs_views[i], NULL);
+    if (c->swapchain.imgs_views) {
+        for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
+            vkDestroyImageView(c->dev, c->swapchain.imgs_views[i], NULL);
+        }
+        free(c->swapchain.imgs_views);
     }
 
-    if (c->swapchain.imgs_views) {
-        free(c->swapchain.imgs_views);
+    if (c->swapchain.depth_images) {
+        for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
+            destroy_image(c, &c->swapchain.depth_images[i]);
+        }
+        free(c->swapchain.depth_images);
     }
 
     vkDestroySwapchainKHR(c->dev, c->swapchain.handle, NULL);
@@ -617,8 +556,8 @@ static bool create_pipeline(struct rcontext *c) {
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = VK_FALSE,
-        .depthWriteEnable = VK_FALSE,
+        .depthTestEnable = VK_TRUE,
+        .depthWriteEnable = VK_TRUE,
         .depthCompareOp = VK_COMPARE_OP_LESS,
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f,
@@ -990,6 +929,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created logical device");
 
+    if (!create_vma(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created vma");
+
     i32 w, h;
     glfwGetWindowSize(window, &w, &h);
 
@@ -1010,12 +955,6 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created frame data");
-
-    if (!create_vma(rctx)) {
-        return false;
-    }
-
-    LOGM(INFO, "created vma");
 
     // staring value
     rctx->render_queue.count = 0;
@@ -1176,11 +1115,24 @@ static bool record_cmd_buffer(struct rcontext *c) {
         .clearValue = clear_color,
     };
 
+    VkRenderingAttachmentInfo depth_attachment_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = c->swapchain.depth_images[c->img_idx].view,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue =
+            {
+                .depthStencil = {1.0f, 0.0f},
+            },
+    };
+
     VkRenderingInfo render_info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .layerCount = 1,
         .colorAttachmentCount = 1,
         .pColorAttachments = &color_attachment_info,
+        .pDepthAttachment = &depth_attachment_info,
         .renderArea =
             {
                 .extent = c->swapchain.extent,

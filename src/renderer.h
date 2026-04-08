@@ -26,13 +26,23 @@ struct queue {
     i32 index;
 };
 
+struct image {
+    VkImage handle;
+    VkImageView view;
+    VmaAllocation alloc;
+};
+
 struct swapchain {
     VkSwapchainKHR handle;
     VkFormat fmt;
     VkExtent2D extent;
 
+    // not of type struct image because they dont
+    // need allocated memory
     VkImageView *imgs_views;
     VkImage *imgs;
+
+    struct image *depth_images;
     u32 n_imgs;
 };
 
