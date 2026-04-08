@@ -55,6 +55,12 @@ struct frame_data {
 
 typedef u32 texture_id;
 
+struct model {
+    struct buffer vertex_buffer;
+    struct buffer index_buffer;
+    u32 n_index;
+};
+
 enum {
     DRAW_CMD_TYPE_BOX,
     DRAW_CMD_TYPE_TEXTURE_BOX,
@@ -115,17 +121,27 @@ struct rcontext {
     u32 frame_idx;
     u32 img_idx;
 
-    struct buffer vertex_buffer;
+    struct model box_model;
+
     struct render_queue render_queue;
     struct camera cam;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers);
+
 bool renderer_resize(struct rcontext *rctx, u32 w, u32 h);
+
 void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
+
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
+
 void renderer_update_cam(struct rcontext *rctx, GLFWwindow *window, f32 dt);
+
+bool renderer_create_model(struct rcontext *rctx, const char *filepath,
+                           struct model *model);
+void renderer_destroy_model(struct rcontext *rctx, struct model *model);
+
 void renderer_deint(struct rcontext *rctx);
 
 #endif // RENDERER_H

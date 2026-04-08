@@ -3,8 +3,11 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan_core.h>
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <cgltf/cgltf.h>
 
 #include "cmath.h"
 #include "log.h"
@@ -554,28 +557,41 @@ static bool create_pipeline(struct rcontext *c) {
 
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
-        .stride = sizeof(f32) * 3,
+        .stride = sizeof(f32) * 8,
         .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
     };
 
-    VkVertexInputAttributeDescription attrib_desc = {
-        .binding = 0,
-        .location = 0,
-        .format = VK_FORMAT_R32G32B32_SFLOAT,
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
     };
 
     VkPipelineVertexInputStateCreateInfo vertex = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 1,
         .pVertexBindingDescriptions = &binding_desc,
-        .vertexAttributeDescriptionCount = 1,
-        .pVertexAttributeDescriptions = &attrib_desc,
+        .vertexAttributeDescriptionCount = ARRAY_COUNT(attrib_desc),
+        .pVertexAttributeDescriptions = attrib_desc,
     };
 
     VkPipelineInputAssemblyStateCreateInfo assembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology =
-            VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, // TODO: maybe wrong mode
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
     };
 
     VkPipelineViewportStateCreateInfo viewport = {
@@ -587,6 +603,11 @@ static bool create_pipeline(struct rcontext *c) {
     VkPipelineRasterizationStateCreateInfo rasterization = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .lineWidth = 1.0f,
+        .depthClampEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .cullMode = VK_CULL_MODE_NONE,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = VK_FALSE,
     };
 
     VkPipelineMultisampleStateCreateInfo multisample = {
@@ -774,13 +795,13 @@ static bool create_vma(struct rcontext *c) {
 }
 
 static struct buffer create_device_local_buffer(struct rcontext *c,
-                                                VkDeviceSize size) {
+                                                VkDeviceSize size,
+                                                VkBufferUsageFlags flags) {
     struct buffer res = {0};
 
     VkBufferCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                 VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .usage = flags,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .size = size,
     };
@@ -919,12 +940,15 @@ static bool copy_buffer(struct rcontext *c, struct buffer *staging,
     return true;
 }
 
-static bool create_buffers(struct rcontext *c) {
-    VkDeviceSize vertex_buffer_size = ARRAY_COUNT(vertices) * sizeof(f32);
-    struct buffer staging =
-        create_staging_buffer(c, vertex_buffer_size, vertices);
-    c->vertex_buffer = create_device_local_buffer(c, vertex_buffer_size);
-    copy_buffer(c, &staging, &c->vertex_buffer);
+static bool upload_data_to_buffer(struct rcontext *c, struct buffer *buffer,
+                                  u32 data_size, void *data) {
+    if (data_size != buffer->size) {
+        LOGM(WARN, "buffer->size != data_size");
+        return false;
+    }
+
+    struct buffer staging = create_staging_buffer(c, data_size, data);
+    copy_buffer(c, &staging, buffer);
     vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
 
     return true;
@@ -993,12 +1017,6 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created vma");
 
-    if (!create_buffers(rctx)) {
-        return false;
-    }
-
-    LOGM(INFO, "created gpu buffers");
-
     // staring value
     rctx->render_queue.count = 0;
     rctx->render_queue.capacity = 4;
@@ -1009,6 +1027,9 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     rctx->cam.pos = (vec3){0.0f, 0.0f, 0.0f};
     rctx->cam.direction = (vec3){0.0f, 0.0f, 1.0f};
     rctx->cam.speed = 5.0f;
+
+    // box model
+    renderer_create_model(rctx, "assets/models/monkey.glb", &rctx->box_model);
 
     return true;
 }
@@ -1073,7 +1094,10 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
 
             VkDeviceSize offsets[] = {0};
             vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
-                                   &c->vertex_buffer.handle, offsets);
+                                   &c->box_model.vertex_buffer.handle, offsets);
+            vkCmdBindIndexBuffer(data->cmd_buffer,
+                                 c->box_model.index_buffer.handle, 0,
+                                 VK_INDEX_TYPE_UINT16);
 
             struct box_push_constant push_constant = {
                 .m = m,
@@ -1084,7 +1108,8 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                                VK_SHADER_STAGE_VERTEX_BIT, 0,
                                sizeof(struct box_push_constant),
                                &push_constant);
-            vkCmdDraw(data->cmd_buffer, 36, 1, 0, 0);
+            vkCmdDrawIndexed(data->cmd_buffer, c->box_model.n_index, 1, 0, 0,
+                             0);
         } break;
         }
     }
@@ -1302,11 +1327,115 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
     }
 }
 
+static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
+                        void *output_data, u32 n_elements, u32 element_size) {
+    u8 *output = output_data;
+    u8 *input = input_data;
+
+    for (u32 i = 0; i < n_elements; i++) {
+        for (u32 j = 0; j < element_size; j++) {
+            output[j] = input[j];
+        }
+        output += output_stride;
+        input += input_stride;
+    }
+}
+
+bool renderer_create_model(struct rcontext *c, const char *filepath,
+                           struct model *model) {
+    cgltf_options options = {0};
+    cgltf_data *data = NULL;
+
+    cgltf_result error = cgltf_parse_file(&options, filepath, &data);
+    if (error != cgltf_result_success) {
+        LOGM(ERROR, "failed to load gltf model: %s", filepath);
+        return false;
+    }
+
+    // TODO: path
+    error = cgltf_load_buffers(&options, data, "assets/meshes");
+    if (error != cgltf_result_success) {
+        LOGM(ERROR, "failed to load gltf model bufffers: %s", filepath);
+        cgltf_free(data);
+        return false;
+    }
+
+    // check for unsupported model (that my program cant handle rn xD)
+    cgltf_primitive *p = &data->meshes[0].primitives[0];
+    assert(data->meshes_count == 1);
+    assert(data->meshes[0].primitives_count == 1);
+    assert(p->attributes_count > 0);
+    assert(p->indices->component_type == cgltf_component_type_r_16u);
+    assert(p->indices->stride == sizeof(u16));
+
+    // index buffer
+    u8 *buffer_base = (u8 *)p->indices->buffer_view->buffer->data;
+    u64 index_data_size = p->indices->buffer_view->size;
+    void *index_data = buffer_base + p->indices->buffer_view->offset;
+
+    model->index_buffer = create_device_local_buffer(
+        c, index_data_size,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    upload_data_to_buffer(c, &model->index_buffer, index_data_size, index_data);
+    model->n_index = p->indices->count;
+
+    // vertex buffer
+    // pos (3) uv (2) normals (3)
+    u32 output_stride = sizeof(f32) * 8;
+    u32 n_vertex = p->attributes->data->count;
+    u32 vertex_data_size = output_stride * n_vertex;
+    u8 *vertex_data = malloc(vertex_data_size);
+
+    for (u32 i = 0; i < p->attributes_count; i++) {
+        cgltf_attribute *a = p->attributes + i;
+        buffer_base = (u8 *)a->data->buffer_view->buffer->data;
+        u32 input_stride = a->data->stride;
+
+        if (a->type == cgltf_attribute_type_position) {
+            void *pos_data = buffer_base + a->data->buffer_view->offset;
+            fill_buffer(input_stride, pos_data, output_stride, vertex_data,
+                        n_vertex, sizeof(f32) * 3);
+        }
+
+        else if (a->type == cgltf_attribute_type_texcoord) {
+            void *texcoord_data = buffer_base + a->data->buffer_view->offset;
+            fill_buffer(input_stride, texcoord_data, output_stride,
+                        vertex_data + (sizeof(f32) * 3), n_vertex,
+                        sizeof(f32) * 2);
+        }
+
+        else if (a->type == cgltf_attribute_type_normal) {
+            void *normal_data = buffer_base + a->data->buffer_view->offset;
+            fill_buffer(input_stride, normal_data, output_stride,
+                        vertex_data + (sizeof(f32) * 5), n_vertex,
+                        sizeof(f32) * 3);
+        }
+    }
+
+    model->vertex_buffer = create_device_local_buffer(
+        c, vertex_data_size,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    upload_data_to_buffer(c, &model->vertex_buffer, vertex_data_size,
+                          vertex_data);
+
+    cgltf_free(data);
+
+    return true;
+}
+
+void renderer_destroy_model(struct rcontext *c, struct model *model) {
+    vmaDestroyBuffer(c->allocator, model->vertex_buffer.handle,
+                     model->vertex_buffer.alloc);
+    vmaDestroyBuffer(c->allocator, model->index_buffer.handle,
+                     model->index_buffer.alloc);
+    *model = (struct model){0};
+}
+
 void renderer_deint(struct rcontext *rctx) {
     vkDeviceWaitIdle(rctx->dev);
 
-    vmaDestroyBuffer(rctx->allocator, rctx->vertex_buffer.handle,
-                     rctx->vertex_buffer.alloc);
+    // box model
+    renderer_destroy_model(rctx, &rctx->box_model);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,

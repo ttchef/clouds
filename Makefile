@@ -12,10 +12,10 @@ OBJ_FILES := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
 .PHONY: all clean folders
 
-all: folders $(BUILD_DIR)/vma.o $(OBJ_FILES)
+all: folders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(OBJ_FILES)
 	glslc -fshader-stage=vert shaders/vert.glsl -o shaders/vert.spv
 	glslc -fshader-stage=frag shaders/frag.glsl -o shaders/frag.spv
-	$(CC) $(OBJ_FILES) $(BUILD_DIR)/vma.o -o $(BUILD_DIR)/main $(LDFLAGS)
+	$(CC) $(OBJ_FILES) $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o -o $(BUILD_DIR)/main $(LDFLAGS)
 
 folders:
 	mkdir -p $(BUILD_DIR)
@@ -23,8 +23,13 @@ folders:
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# VMA
 $(BUILD_DIR)/vma.o: $(LIBS_DIR)/vma/vma.cpp
 	g++ -O2 -c $(LIBS_DIR)/vma/vma.cpp -o $(BUILD_DIR)/vma.o
+
+# CGLTF
+$(BUILD_DIR)/cgltf.o: $(LIBS_DIR)/cgltf/cgltf.c
+	gcc -O2 -c $(LIBS_DIR)/cgltf/cgltf.c -o $(BUILD_DIR)/cgltf.o
 
 clean:
 	rm -rf build shaders/*.svp

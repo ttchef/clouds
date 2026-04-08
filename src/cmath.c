@@ -143,7 +143,7 @@ void math_vec4_print(vec4 v) {
 void math_matrix_print(matrix *m) {
     printf("Matrix:\n");
     for (i32 i = 0; i < 4; i++) {
-        printf("\tRow %d: [%.4f, %.4f, %.4f, %.4f]\n", i + 1, m->m[i + 0],
+        printf("\tRow %d: [%.4f, %.4f, %.4f, %.4f]\n", i + 1, m->m[i * 4 + 0],
                m->m[i * 4 + 1], m->m[i * 4 + 2], m->m[i * 4 + 3]);
     }
 }

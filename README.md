@@ -2,5 +2,7 @@
 
 Cloud Rendering using vulkan
 
-# Install
-...
+# dependencies
+- cgltf
+- glfw
+- vulkan
