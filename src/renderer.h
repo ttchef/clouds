@@ -73,7 +73,8 @@ struct model {
 
 enum {
     DRAW_CMD_TYPE_BOX,
-    DRAW_CMD_TYPE_MODEL,
+    DRAW_CMD_TYPE_MODEL_COLOR,
+    DRAW_CMD_TYPE_MODEL_TEXTURE,
 };
 
 struct draw_cmd {
@@ -88,7 +89,12 @@ struct draw_cmd {
 
         struct {
             model_id id;
-        } model;
+            vec4 color;
+        } model_color;
+
+        struct {
+            model_id id;
+        } model_texture;
     };
 };
 
@@ -151,8 +157,9 @@ bool renderer_resize(struct rcontext *rctx, u32 w, u32 h);
 
 void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
 
-void renderer_push_model(struct rcontext *rctx, vec3 pos, vec3 scale,
-                         model_id model);
+// renders the model in the color specified
+void renderer_push_model_color(struct rcontext *rctx, vec3 pos, vec3 scale,
+                               vec4 color, model_id model);
 
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 

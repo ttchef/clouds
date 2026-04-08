@@ -78,8 +78,9 @@ i32 main(void) {
         renderer_push_box(&ctx.rctx, (vec3){-0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
 
-        renderer_push_model(&ctx.rctx, (vec3){0.0, 0.0, -3.0f},
-                            (vec3){10, 10, 10}, boom_box);
+        renderer_push_model_color(&ctx.rctx, (vec3){0.0, 0.0, -3.0f},
+                                  (vec3){10, 10, 10},
+                                  (vec4){0.2, 0.6, 0.9, 1.0}, boom_box);
 
         renderer_draw(&ctx.rctx, ctx.window);
         glfwPollEvents();

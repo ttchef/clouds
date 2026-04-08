@@ -1007,13 +1007,14 @@ void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
     push_draw_cmd(c, &cmd);
 }
 
-void renderer_push_model(struct rcontext *c, vec3 pos, vec3 scale,
-                         model_id model) {
+void renderer_push_model_color(struct rcontext *c, vec3 pos, vec3 scale,
+                               vec4 color, model_id model) {
     struct draw_cmd cmd = (struct draw_cmd){
-        .type = DRAW_CMD_TYPE_MODEL,
+        .type = DRAW_CMD_TYPE_MODEL_COLOR,
         .pos = pos,
         .scale = scale,
-        .model.id = model,
+        .model_color.color = color,
+        .model_color.id = model,
     };
 
     push_draw_cmd(c, &cmd);
@@ -1068,7 +1069,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
             vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1,
                              0, 0, 0);
         } break;
-        case DRAW_CMD_TYPE_MODEL: {
+        case DRAW_CMD_TYPE_MODEL_COLOR: {
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                               c->pipeline.handle);
 
@@ -1076,10 +1077,11 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
 
             vkCmdBindVertexBuffers(
                 data->cmd_buffer, 0, 1,
-                &c->models[cmd->model.id].vertex_buffer.handle, offsets);
-            vkCmdBindIndexBuffer(data->cmd_buffer,
-                                 c->models[cmd->model.id].index_buffer.handle,
-                                 0, VK_INDEX_TYPE_UINT16);
+                &c->models[cmd->model_color.id].vertex_buffer.handle, offsets);
+            vkCmdBindIndexBuffer(
+                data->cmd_buffer,
+                c->models[cmd->model_color.id].index_buffer.handle, 0,
+                VK_INDEX_TYPE_UINT16);
 
             struct box_push_constant push_constant = {
                 .m = m, // matrix
@@ -1090,8 +1092,9 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                                VK_SHADER_STAGE_VERTEX_BIT, 0,
                                sizeof(struct box_push_constant),
                                &push_constant);
-            vkCmdDrawIndexed(data->cmd_buffer, c->models[cmd->model.id].n_index,
-                             1, 0, 0, 0);
+            vkCmdDrawIndexed(data->cmd_buffer,
+                             c->models[cmd->model_color.id].n_index, 1, 0, 0,
+                             0);
         } break;
         }
     }
