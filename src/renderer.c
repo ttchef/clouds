@@ -323,6 +323,7 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
     if (caps.maxImageCount > 0 && n_imgs > caps.maxImageCount) {
         n_imgs = caps.maxImageCount;
     }
+    LOGM(API_DUMP, "swapchain image count: %d", n_imgs);
 
     VkSwapchainCreateInfoKHR create_info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -966,6 +967,7 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     rctx->cam.pos = (vec3){0.0f, 0.0f, 0.0f};
     rctx->cam.direction = (vec3){0.0f, 0.0f, 1.0f};
     rctx->cam.speed = 5.0f;
+    rctx->cam.sensitivity = 0.27f;
 
     // box model
     renderer_create_model(rctx, "assets/models/monkey.glb", &rctx->box_model);
@@ -1278,16 +1280,18 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
 void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
     struct camera *cam = &c->cam;
 
+    vec3 forward =
+        math_vec3_norm((vec3){cam->direction.x, 0.0f, cam->direction.z});
     vec3 up = {0.0f, 1.0f, 0.0f};
     vec3 right = math_vec3_norm(math_vec3_cross(cam->direction, up));
 
     if (glfwGetKey(window, GLFW_KEY_W) != GLFW_RELEASE) {
         cam->pos = math_vec3_subtract(
-            cam->pos, math_vec3_scale(cam->direction, cam->speed * dt));
+            cam->pos, math_vec3_scale(forward, cam->speed * dt));
     }
     if (glfwGetKey(window, GLFW_KEY_S) != GLFW_RELEASE) {
-        cam->pos = math_vec3_add(
-            cam->pos, math_vec3_scale(cam->direction, cam->speed * dt));
+        cam->pos =
+            math_vec3_add(cam->pos, math_vec3_scale(forward, cam->speed * dt));
     }
     if (glfwGetKey(window, GLFW_KEY_A) != GLFW_RELEASE) {
         cam->pos = math_vec3_subtract(cam->pos,
@@ -1297,6 +1301,53 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
         cam->pos =
             math_vec3_add(cam->pos, math_vec3_scale(right, cam->speed * dt));
     }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) != GLFW_RELEASE) {
+        cam->pos =
+            math_vec3_add(cam->pos, math_vec3_scale(up, cam->speed * dt));
+    }
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) != GLFW_RELEASE) {
+        cam->pos =
+            math_vec3_subtract(cam->pos, math_vec3_scale(up, cam->speed * dt));
+    }
+
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+        if (!c->cam.invis_cursor) {
+            f64 x, y;
+            glfwGetCursorPos(window, &x, &y);
+
+            vec2 pos = (vec2){(f32)x, (f32)y};
+            c->cam.last_mouse = pos;
+            c->cam.invis_cursor = true;
+        }
+    }
+
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        c->cam.invis_cursor = false;
+    }
+
+    f64 x, y;
+    glfwGetCursorPos(window, &x, &y);
+
+    vec2 pos = (vec2){(f32)x, (f32)y};
+    vec2 delta = math_vec2_subtract(pos, c->cam.last_mouse);
+
+    if (c->cam.invis_cursor) {
+        c->cam.yaw += delta.x * c->cam.sensitivity;
+        c->cam.pitch += delta.y * c->cam.sensitivity;
+
+        math_clamp(c->cam.pitch, -89.0f, 89.0f);
+
+        c->cam.last_mouse = pos;
+    }
+
+    vec3 front;
+    front.x = cos(DEG2RAD(c->cam.pitch)) * sin(DEG2RAD(c->cam.yaw));
+    front.y = sin(DEG2RAD(c->cam.pitch));
+    front.z = cos(DEG2RAD(c->cam.pitch)) * cos(DEG2RAD(c->cam.yaw));
+    c->cam.direction = math_vec3_norm(front);
 }
 
 static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,

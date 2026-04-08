@@ -192,17 +192,14 @@ matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up) {
 
     matrix m = {0};
     m.m[0] = x.x;
-    m.m[1] = x.y;
-    m.m[2] = x.z;
-    m.m[3] = 0.0f;
-    m.m[4] = y.x;
+    m.m[4] = x.y;
+    m.m[8] = x.z;
+    m.m[1] = y.x;
     m.m[5] = y.y;
-    m.m[6] = y.z;
-    m.m[7] = 0.0f;
-    m.m[8] = z.x;
-    m.m[9] = z.y;
+    m.m[9] = y.z;
+    m.m[2] = z.x;
+    m.m[6] = z.y;
     m.m[10] = z.z;
-    m.m[11] = 0.0f;
     m.m[12] = -(x.x * eye.x + x.y * eye.y + x.z * eye.z);
     m.m[13] = -(y.x * eye.x + y.y * eye.y + y.z * eye.z);
     m.m[14] = -(z.x * eye.x + z.y * eye.y + z.z * eye.z);

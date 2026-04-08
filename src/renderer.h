@@ -107,9 +107,14 @@ struct camera {
     f32 speed;
     f32 sensitivity;
 
-    vec2 last_mouse_pos;
+    f32 yaw;
+    f32 pitch;
+
+    vec2 last_mouse;
     vec3 pos;
     vec3 direction;
+
+    bool invis_cursor;
 };
 
 struct rcontext {

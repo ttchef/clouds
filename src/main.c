@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <vulkan/vulkan_core.h>
 
 #include "log.h"
@@ -19,6 +20,7 @@ void glfw_resize_callback(GLFWwindow *window, i32 w, i32 h) {
 
 i32 main(void) {
     struct context ctx;
+    memset(&ctx, 0, sizeof(struct context));
 
     if (!glfwInit()) {
         fprintf(stderr, "failed to init glfw\n");
