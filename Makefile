@@ -14,8 +14,8 @@ OBJ_FILES := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
 .PHONY: all clean folders shaders
 
-all: folders shaders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(OBJ_FILES)
-	$(CC) $(OBJ_FILES) $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o -o $(BUILD_DIR)/main $(LDFLAGS)
+all: folders shaders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o $(OBJ_FILES)
+	$(CC) $(OBJ_FILES) $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o -o $(BUILD_DIR)/main $(LDFLAGS)
 
 folders:
 	mkdir -p $(BUILD_DIR)
@@ -43,6 +43,11 @@ $(BUILD_DIR)/vma.o: $(LIBS_DIR)/vma/vma.cpp
 # CGLTF
 $(BUILD_DIR)/cgltf.o: $(LIBS_DIR)/cgltf/cgltf.c
 	gcc -O2 -c $(LIBS_DIR)/cgltf/cgltf.c -o $(BUILD_DIR)/cgltf.o
+
+	
+# CGLTF
+$(BUILD_DIR)/stbi.o: $(LIBS_DIR)/stbi/stb_image.c
+	gcc -O2 -c $(LIBS_DIR)/stbi/stb_image.c -o $(BUILD_DIR)/stbi.o
 
 clean:
 	rm -rf build shaders/*.svp

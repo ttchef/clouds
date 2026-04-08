@@ -1,6 +1,7 @@
 
 #include "renderer.h"
 #include <GLFW/glfw3.h>
+#include <stdint.h>
 #include <vulkan/vulkan_core.h>
 
 #include <assert.h>
@@ -8,12 +9,23 @@
 #include <string.h>
 
 #include <cgltf/cgltf.h>
+#include <stbi/stb_image.h>
 
 #include "cmath.h"
 #include "darray.h"
 #include "log.h"
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
+
+// push constant
+struct model_color_pc {
+    matrix mat;
+    vec4 color;
+};
+
+struct model_texture_pc {
+    matrix mat;
+};
 
 static struct api_version get_api_version() {
     u32 instance_version;
@@ -457,17 +469,21 @@ static bool create_shader_module(struct rcontext *c, VkShaderModule *module,
     return true;
 }
 
-static bool create_pipeline(struct rcontext *c) {
-    // TODO: not hardcoded paths
+static bool create_pipeline(struct rcontext *c, struct pipeline *pipeline,
+                            const char *vertex_path, const char *fragment_path,
+                            VkVertexInputBindingDescription binding_decs,
+                            VkVertexInputAttributeDescription *attribute_decs,
+                            u32 n_attributes,
+                            VkPipelineLayoutCreateInfo layout_info) {
     VkShaderModule vert_module;
-    if (!create_shader_module(c, &vert_module, "build/spv/box-vert.spv")) {
+    if (!create_shader_module(c, &vert_module, vertex_path)) {
         return false;
     }
 
     LOGM(API_DUMP, "created vertex shader module");
 
     VkShaderModule frag_module;
-    if (!create_shader_module(c, &frag_module, "build/spv/box-frag.spv")) {
+    if (!create_shader_module(c, &frag_module, fragment_path)) {
         return false;
     }
 
@@ -496,38 +512,12 @@ static bool create_pipeline(struct rcontext *c) {
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
     };
 
-    VkVertexInputBindingDescription binding_desc = {
-        .binding = 0,
-        .stride = sizeof(f32) * 8,
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-    };
-
-    VkVertexInputAttributeDescription attrib_desc[] = {
-        {
-            .binding = 0,
-            .location = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-        },
-        {
-            .binding = 0,
-            .location = 1,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = sizeof(f32) * 3,
-        },
-        {
-            .binding = 0,
-            .location = 2,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = sizeof(f32) * 5,
-        },
-    };
-
     VkPipelineVertexInputStateCreateInfo vertex = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount = 1,
-        .pVertexBindingDescriptions = &binding_desc,
-        .vertexAttributeDescriptionCount = ARRAY_COUNT(attrib_desc),
-        .pVertexAttributeDescriptions = attrib_desc,
+        .pVertexBindingDescriptions = &binding_decs,
+        .vertexAttributeDescriptionCount = n_attributes,
+        .pVertexAttributeDescriptions = attribute_decs,
     };
 
     VkPipelineInputAssemblyStateCreateInfo assembly = {
@@ -594,19 +584,8 @@ static bool create_pipeline(struct rcontext *c) {
         .pDynamicStates = dym_states,
     };
 
-    VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .size = sizeof(struct box_push_constant),
-    };
-
-    VkPipelineLayoutCreateInfo layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_range,
-    };
-
-    if (vkCreatePipelineLayout(c->dev, &layout_create_info, NULL,
-                               &c->pipeline.layout) != VK_SUCCESS) {
+    if (vkCreatePipelineLayout(c->dev, &layout_info, NULL, &pipeline->layout) !=
+        VK_SUCCESS) {
         LOGM(ERROR, "failed to create pipeline layout");
         goto error_path;
     }
@@ -616,7 +595,7 @@ static bool create_pipeline(struct rcontext *c) {
     VkGraphicsPipelineCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &dynamic_rendering,
-        .layout = c->pipeline.layout,
+        .layout = pipeline->layout,
         .stageCount = ARRAY_COUNT(shader_stages),
         .pStages = shader_stages,
         .pVertexInputState = &vertex,
@@ -631,7 +610,7 @@ static bool create_pipeline(struct rcontext *c) {
     };
 
     if (vkCreateGraphicsPipelines(c->dev, 0, 1, &create_info, NULL,
-                                  &c->pipeline.handle) != VK_SUCCESS) {
+                                  &pipeline->handle) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create graphics pipeline");
         goto error_path;
     }
@@ -895,6 +874,309 @@ static bool upload_data_to_buffer(struct rcontext *c, struct buffer *buffer,
     return true;
 }
 
+static bool upload_data_to_image(struct rcontext *c, struct image *image,
+                                 u32 data_size, void *data, u32 width,
+                                 u32 height, VkImageLayout final_layout,
+                                 VkAccessFlags dst_access_mask) {
+    VkCommandPool cmd_pool;
+    VkCommandBuffer cmd_buffer;
+
+    VkCommandPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = c->graphics_queue.index,
+    };
+
+    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &cmd_pool) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command pool");
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+        .commandPool = cmd_pool,
+    };
+
+    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command buffer");
+        return false;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to begin recording into command buffer");
+        return false;
+    }
+
+    VkImageMemoryBarrier image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image->handle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, 0, 0, 0, 1,
+                         &image_barrier);
+
+    struct buffer staging = create_staging_buffer(c, data_size, data);
+
+    VkBufferImageCopy region = {
+        .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .imageSubresource.layerCount = 1,
+        .imageExtent = (VkExtent3D){width, height, 1},
+    };
+
+    vkCmdCopyBufferToImage(cmd_buffer, staging.handle, image->handle,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    image_barrier = (VkImageMemoryBarrier){
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = final_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image->handle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = dst_access_mask,
+    };
+
+    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, 0, 0, 0,
+                         1, &image_barrier);
+    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
+        LOGM(ERROR, "failed recording into command buffer");
+        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        return false;
+    }
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd_buffer,
+    };
+
+    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit queue");
+        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        return false;
+    }
+
+    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
+        LOGM(ERROR, "Failed to wait for queue");
+        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        return false;
+    }
+
+    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+
+    vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+
+    return true;
+}
+
+static bool create_model_color_pipeline(struct rcontext *c) {
+    VkVertexInputBindingDescription binding_desc = {
+        .binding = 0,
+        .stride = sizeof(f32) * 8,
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    VkPushConstantRange push_range = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .size = sizeof(struct model_color_pc),
+    };
+
+    VkPipelineLayoutCreateInfo layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_range,
+    };
+
+    if (!create_pipeline(
+            c, &c->model_color_pip, "build/spv/model_color-vert.spv",
+            "build/spv/model_color-frag.spv", binding_desc, attrib_desc,
+            ARRAY_COUNT(attrib_desc), layout_create_info)) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool create_model_texture_pipeline(struct rcontext *c) {
+    VkVertexInputBindingDescription binding_desc = {
+        .binding = 0,
+        .stride = sizeof(f32) * 8,
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    VkPushConstantRange push_range = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .size = sizeof(struct model_texture_pc),
+    };
+
+    // TODO: Make a more condence api for creation of pipelines
+    VkDescriptorPoolSize pool_sizes[] = {
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, FRAMES_IN_FLIGHT},
+    };
+
+    VkDescriptorPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = FRAMES_IN_FLIGHT,
+        .poolSizeCount = ARRAY_COUNT(pool_sizes),
+        .pPoolSizes = pool_sizes,
+    };
+
+    if (vkCreateDescriptorPool(c->dev, &pool_create_info, NULL,
+                               &c->model_texture_pip.desc_pool) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create descriptor pool");
+        return false;
+    }
+
+    VkDescriptorSetLayoutBinding bindings[] = {
+        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+    };
+
+    VkDescriptorSetLayoutCreateInfo desc_layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = ARRAY_COUNT(bindings),
+        .pBindings = bindings,
+    };
+
+    if (vkCreateDescriptorSetLayout(c->dev, &desc_layout_create_info, NULL,
+                                    &c->model_texture_pip.desc_layout) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create descriptor set layout");
+        return false;
+    }
+
+    VkDescriptorSetLayout desc_layout[] = {
+        c->model_texture_pip.desc_layout,
+        c->model_texture_pip.desc_layout,
+        c->model_texture_pip.desc_layout,
+    };
+
+    VkDescriptorSetAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = c->model_texture_pip.desc_pool,
+        .descriptorSetCount = FRAMES_IN_FLIGHT,
+        .pSetLayouts = desc_layout,
+    };
+
+    if (vkAllocateDescriptorSets(c->dev, &alloc_info,
+                                 c->model_texture_pip.desc_sets) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to allocate descriptor sets");
+        return false;
+    }
+
+    VkPipelineLayoutCreateInfo layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_range,
+        .setLayoutCount = 1,
+        .pSetLayouts = &c->model_texture_pip.desc_layout,
+    };
+
+    if (!create_pipeline(
+            c, &c->model_texture_pip, "build/spv/model_texture-vert.spv",
+            "build/spv/model_texture-frag.spv", binding_desc, attrib_desc,
+            ARRAY_COUNT(attrib_desc), layout_create_info)) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool create_sampler(struct rcontext *c) {
+    VkSamplerCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_NEAREST,
+        .minFilter = VK_FILTER_NEAREST,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = create_info.addressModeU,
+        .addressModeW = create_info.addressModeU,
+        .mipLodBias = 0.0f,
+        .maxAnisotropy = 1.0f,
+        .minLod = 0.0f,
+        .maxLod = 1.0f,
+    };
+
+    if (vkCreateSampler(c->dev, &create_info, NULL, &c->sampler) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create sampler");
+        return false;
+    }
+
+    return true;
+}
+
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
                    const char **exts, i32 n_layers, const char **layers) {
     if (!create_instance(rctx, n_exts, exts, n_layers, layers)) {
@@ -946,11 +1228,23 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created swapchain");
 
-    if (!create_pipeline(rctx)) {
+    if (!create_sampler(rctx)) {
         return false;
     }
 
-    LOGM(INFO, "created pipline");
+    LOGM(INFO, "created sampler");
+
+    if (!create_model_color_pipeline(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created model_color pipeline");
+
+    if (!create_model_texture_pipeline(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created model_texture pipeline");
 
     if (!create_frame_data(rctx)) {
         return false;
@@ -1020,6 +1314,18 @@ void renderer_push_model_color(struct rcontext *c, vec3 pos, vec3 scale,
     push_draw_cmd(c, &cmd);
 }
 
+void renderer_push_model_texture(struct rcontext *c, vec3 pos, vec3 scale,
+                                 model_id model) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_MODEL_TEXTURE,
+        .pos = pos,
+        .scale = scale,
+        .model_texture.id = model,
+    };
+
+    push_draw_cmd(c, &cmd);
+}
+
 void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
     struct render_queue *q = &c->render_queue;
 
@@ -1046,7 +1352,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         switch (cmd->type) {
         case DRAW_CMD_TYPE_BOX: {
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              c->pipeline.handle);
+                              c->model_color_pip.handle);
 
             VkDeviceSize offsets[] = {0};
 
@@ -1057,21 +1363,20 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                                  c->models[c->box_id].index_buffer.handle, 0,
                                  VK_INDEX_TYPE_UINT16);
 
-            struct box_push_constant push_constant = {
-                .m = m, // matrix
+            struct model_color_pc push_constant = {
+                .mat = m, // matrix
                 .color = cmd->box.color,
             };
 
-            vkCmdPushConstants(data->cmd_buffer, c->pipeline.layout,
+            vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
                                VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct box_push_constant),
-                               &push_constant);
+                               sizeof(struct model_color_pc), &push_constant);
             vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1,
                              0, 0, 0);
         } break;
         case DRAW_CMD_TYPE_MODEL_COLOR: {
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              c->pipeline.handle);
+                              c->model_color_pip.handle);
 
             VkDeviceSize offsets[] = {0};
 
@@ -1083,19 +1388,72 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 c->models[cmd->model_color.id].index_buffer.handle, 0,
                 VK_INDEX_TYPE_UINT16);
 
-            struct box_push_constant push_constant = {
-                .m = m, // matrix
+            struct model_color_pc push_constant = {
+                .mat = m, // matrix
                 .color = cmd->box.color,
             };
 
-            vkCmdPushConstants(data->cmd_buffer, c->pipeline.layout,
+            vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
                                VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct box_push_constant),
-                               &push_constant);
+                               sizeof(struct model_color_pc), &push_constant);
             vkCmdDrawIndexed(data->cmd_buffer,
                              c->models[cmd->model_color.id].n_index, 1, 0, 0,
                              0);
         } break;
+        case DRAW_CMD_TYPE_MODEL_TEXTURE: {
+            // TODO: only for now just exit
+            if (!c->models[cmd->model_texture.id].has_image) {
+                LOGM(ERROR, "render model has no texture");
+                exit(1);
+            }
+
+            // write to the descriptor set
+            VkDescriptorImageInfo image_info = {
+                .sampler = c->sampler,
+                .imageView = c->models[cmd->model_texture.id].image.view,
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            };
+
+            VkWriteDescriptorSet write = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = c->model_texture_pip.desc_sets[c->frame_idx],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_info,
+            };
+
+            vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              c->model_texture_pip.handle);
+
+            VkDeviceSize offsets[] = {0};
+
+            vkCmdBindVertexBuffers(
+                data->cmd_buffer, 0, 1,
+                &c->models[cmd->model_texture.id].vertex_buffer.handle,
+                offsets);
+            vkCmdBindIndexBuffer(
+                data->cmd_buffer,
+                c->models[cmd->model_texture.id].index_buffer.handle, 0,
+                VK_INDEX_TYPE_UINT16);
+
+            struct model_texture_pc push_constant = {
+                .mat = m, // matrix
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, c->model_texture_pip.layout,
+                               VK_SHADER_STAGE_VERTEX_BIT, 0,
+                               sizeof(struct model_texture_pc), &push_constant);
+            vkCmdBindDescriptorSets(
+                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                c->model_texture_pip.layout, 0, 1,
+                &c->model_texture_pip.desc_sets[c->frame_idx], 0, NULL);
+            vkCmdDrawIndexed(data->cmd_buffer,
+                             c->models[cmd->model_texture.id].n_index, 1, 0, 0,
+                             0);
+        }; break;
         }
     }
     q->count = 0;
@@ -1486,6 +1844,57 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     upload_data_to_buffer(c, &model.vertex_buffer, vertex_data_size,
                           vertex_data);
 
+    // texture
+    if (data->materials_count != 1) {
+        LOGM(WARN, "Material has no texture: %s", filepath);
+        goto end;
+    }
+
+    cgltf_material *material = &data->materials[0];
+    if (!material->has_pbr_metallic_roughness) {
+        LOGM(WARN, "Material has no texture: %s", filepath);
+        goto end;
+    }
+
+    cgltf_texture_view albedo_texture_view =
+        material->pbr_metallic_roughness.base_color_texture;
+
+    if (albedo_texture_view.has_transform ||
+        albedo_texture_view.texcoord != 0 || !albedo_texture_view.texture) {
+        LOGM(WARN, "Material has no texture: %s", filepath);
+        goto end;
+    }
+
+    cgltf_texture *albedo_texture = albedo_texture_view.texture;
+
+    cgltf_buffer_view *buffer_view = albedo_texture->image->buffer_view;
+    if (buffer_view->size >= INT32_MAX) {
+        LOGM(WARN, "Material has no texture: %s", filepath);
+        goto end;
+    }
+
+    i32 bpp, width, height;
+    u8 *texture_data =
+        stbi_load_from_memory((stbi_uc *)buffer_view->buffer->data,
+                              buffer_view->size, &width, &height, &bpp, 4);
+    if (!texture_data) {
+        LOGM(ERROR, "failed to load model texture: %s", filepath);
+        return -1;
+    }
+
+    bpp = 4;
+
+    create_image(c, &model.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    upload_data_to_image(
+        c, &model.image, width * height * bpp, texture_data, width, height,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+    stbi_image_free(texture_data);
+
+    model.has_image = true;
+
+end:
+
     cgltf_free(data);
 
     model_id id = darrayLength(c->models);
@@ -1518,8 +1927,8 @@ void renderer_deint(struct rcontext *rctx) {
 
     vkDestroyCommandPool(rctx->dev, rctx->cmd_pool, NULL);
 
-    vkDestroyPipelineLayout(rctx->dev, rctx->pipeline.layout, NULL);
-    vkDestroyPipeline(rctx->dev, rctx->pipeline.handle, NULL);
+    vkDestroyPipelineLayout(rctx->dev, rctx->model_color_pip.layout, NULL);
+    vkDestroyPipeline(rctx->dev, rctx->model_color_pip.handle, NULL);
 
     destroy_swapchain(rctx);
     vkDestroySurfaceKHR(rctx->instance, rctx->surface, NULL);

@@ -1,7 +1,6 @@
 
 
 #include "cmath.h"
-#include "renderer.h"
 
 #include <math.h>
 #include <stdio.h>

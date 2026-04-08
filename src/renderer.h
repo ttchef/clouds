@@ -49,6 +49,10 @@ struct swapchain {
 struct pipeline {
     VkPipeline handle;
     VkPipelineLayout layout;
+
+    VkDescriptorPool desc_pool;
+    VkDescriptorSetLayout desc_layout;
+    VkDescriptorSet desc_sets[FRAMES_IN_FLIGHT];
 };
 
 struct buffer {
@@ -69,6 +73,9 @@ struct model {
     struct buffer vertex_buffer;
     struct buffer index_buffer;
     u32 n_index;
+
+    struct image image;
+    bool has_image;
 };
 
 enum {
@@ -96,11 +103,6 @@ struct draw_cmd {
             model_id id;
         } model_texture;
     };
-};
-
-struct box_push_constant {
-    matrix m;
-    vec4 color;
 };
 
 struct render_queue {
@@ -134,7 +136,9 @@ struct rcontext {
     struct queue graphics_queue;
     struct queue present_queue;
     struct swapchain swapchain;
-    struct pipeline pipeline;
+
+    struct pipeline model_color_pip;
+    struct pipeline model_texture_pip;
 
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
@@ -148,6 +152,7 @@ struct rcontext {
 
     struct render_queue render_queue;
     struct camera cam;
+    VkSampler sampler;
 };
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
@@ -160,6 +165,9 @@ void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
 // renders the model in the color specified
 void renderer_push_model_color(struct rcontext *rctx, vec3 pos, vec3 scale,
                                vec4 color, model_id model);
+
+void renderer_push_model_texture(struct rcontext *rctx, vec3 pos, vec3 scale,
+                                 model_id model);
 
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 
