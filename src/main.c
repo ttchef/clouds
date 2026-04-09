@@ -14,13 +14,12 @@ struct context {
 };
 
 void glfw_resize_callback(GLFWwindow *window, i32 w, i32 h) {
-    struct context *ctx = glfwGetWindowUserPointer(window);
-    renderer_resize(&ctx->rctx, (u32)w, (u32)h);
+    struct context *c = glfwGetWindowUserPointer(window);
+    renderer_resize(&c->rctx, (u32)w, (u32)h);
 }
 
 i32 main(void) {
-    struct context ctx;
-    memset(&ctx, 0, sizeof(struct context));
+    struct context *c = calloc(sizeof(struct context), 1);
 
     if (!glfwInit()) {
         fprintf(stderr, "failed to init glfw\n");
@@ -28,8 +27,8 @@ i32 main(void) {
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    ctx.window = glfwCreateWindow(800, 600, "Clouds", NULL, NULL);
-    if (!ctx.window) {
+    c->window = glfwCreateWindow(800, 600, "Clouds", NULL, NULL);
+    if (!c->window) {
         fprintf(stderr, "failed to create window\n");
         glfwTerminate();
         exit(1);
@@ -50,50 +49,50 @@ i32 main(void) {
         "VK_LAYER_KHRONOS_validation",
     };
 
-    if (!renderer_init(&ctx.rctx, ctx.window, n_exts, exts, 1, layers)) {
+    if (!renderer_init(&c->rctx, c->window, n_exts, exts, 1, layers)) {
         LOGM(ERROR, "failed to init renderer");
-        glfwDestroyWindow(ctx.window);
+        glfwDestroyWindow(c->window);
         glfwTerminate();
         return 1;
     }
 
-    glfwSetWindowUserPointer(ctx.window, &ctx);
-    glfwSetWindowSizeCallback(ctx.window, glfw_resize_callback);
+    glfwSetWindowUserPointer(c->window, c);
+    glfwSetWindowSizeCallback(c->window, glfw_resize_callback);
 
     model_id boom_box =
-        renderer_create_model(&ctx.rctx, "assets/models/BoomBox.glb");
+        renderer_create_model(&c->rctx, "assets/models/BoomBox.glb");
     texture_id wood =
-        renderer_create_texture(&ctx.rctx, "assets/textures/wood.png");
+        renderer_create_texture(&c->rctx, "assets/textures/wood.png");
 
     f32 last_time = 0.0f;
-    while (!glfwWindowShouldClose(ctx.window)) {
+    while (!glfwWindowShouldClose(c->window)) {
         f32 current_time = glfwGetTime();
         f32 dt = current_time - last_time;
         last_time = current_time;
 
-        renderer_update_cam(&ctx.rctx, ctx.window, dt);
+        renderer_update_cam(&c->rctx, c->window, dt);
 
-        renderer_push_box(&ctx.rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
+        renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);
 
-        renderer_push_box(&ctx.rctx, (vec3){0.3, 0.0, -1.5f},
+        renderer_push_box(&c->rctx, (vec3){0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0},
                           NO_TEXTURE);
 
-        renderer_push_box(&ctx.rctx, (vec3){-0.3, 0.0, -1.5f},
+        renderer_push_box(&c->rctx, (vec3){-0.3, 0.0, -1.5f},
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0},
                           NO_TEXTURE);
 
-        renderer_push_model_texture(&ctx.rctx, (vec3){0.0, 0.0, -3.0f},
+        renderer_push_model_texture(&c->rctx, (vec3){0.0, 0.0, -3.0f},
                                     (vec3){10, 10, 10}, boom_box);
 
-        renderer_draw(&ctx.rctx, ctx.window);
+        renderer_draw(&c->rctx, c->window);
         glfwPollEvents();
     }
 
-    renderer_deint(&ctx.rctx);
+    renderer_deint(&c->rctx);
 
-    glfwDestroyWindow(ctx.window);
+    glfwDestroyWindow(c->window);
     glfwTerminate();
 
     return 0;
