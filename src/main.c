@@ -62,6 +62,7 @@ i32 main(void) {
     model_id boom_box =
         renderer_create_model(&c->rctx, "assets/models/BoomBox.glb");
     model_id torus = renderer_create_model(&c->rctx, "assets/models/torus.glb");
+    model_id logo = renderer_create_model(&c->rctx, "assets/models/logo.glb");
 
     texture_id wood =
         renderer_create_texture(&c->rctx, "assets/textures/wood.png");
@@ -94,6 +95,9 @@ i32 main(void) {
 
         renderer_push_model_texture(&c->rctx, (vec3){0.0, 0.0, -3.0f},
                                     (vec3){10, 10, 10}, boom_box);
+
+        renderer_push_model_texture(&c->rctx, (vec3){0.0, 3, -3.0f},
+                                    (vec3){10, 10, 10}, logo);
 
         renderer_draw(&c->rctx, c->window);
         glfwPollEvents();

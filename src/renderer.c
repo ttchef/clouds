@@ -1924,15 +1924,17 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     cgltf_texture *albedo_texture = albedo_texture_view.texture;
 
     cgltf_buffer_view *buffer_view = albedo_texture->image->buffer_view;
+
     if (buffer_view->size >= INT32_MAX) {
         LOGM(WARN, "model has no texture: %s", filepath);
         goto end;
     }
 
+    u8 *data_ptr = (u8 *)buffer_view->buffer->data + buffer_view->offset;
+
     i32 bpp, width, height;
-    u8 *texture_data =
-        stbi_load_from_memory((stbi_uc *)buffer_view->buffer->data,
-                              buffer_view->size, &width, &height, &bpp, 4);
+    u8 *texture_data = stbi_load_from_memory(
+        (stbi_uc *)data_ptr, buffer_view->size, &width, &height, &bpp, 4);
     if (!texture_data) {
         LOGM(ERROR, "failed to load model texture: %s", filepath);
         return NO_MODEL;
