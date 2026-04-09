@@ -16,6 +16,7 @@
 #define FRAMES_IN_FLIGHT 3
 #define NO_MODEL -1
 #define NO_TEXTURE -1
+#define MAX_TEXTURES 1024
 
 struct api_version {
     u32 major;
@@ -158,8 +159,8 @@ struct rcontext {
     struct model *models;
     model_id box_id;
 
-    // dynamic array (darray.h)
-    struct texture *textures;
+    struct texture textures[MAX_TEXTURES];
+    u32 texture_idx;
 
     struct render_queue render_queue;
     struct camera cam;

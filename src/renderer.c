@@ -1006,13 +1006,6 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
     return true;
 }
 
-static bool create_pipeline_layout_descriptors(struct rcontext *c,
-                                               struct pipeline *pipeline,
-                                               VkPushConstantRange pc) {
-
-    return true;
-}
-
 static bool create_model_color_pipeline(struct rcontext *c) {
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
@@ -1278,9 +1271,6 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     rctx->cam.speed = 5.0f;
     rctx->cam.sensitivity = 0.15f;
 
-    // textures
-    rctx->textures = darrayCreate(struct texture);
-
     // models
     rctx->models = darrayCreate(struct model);
     rctx->box_id = renderer_create_model(rctx, "assets/models/box.glb");
@@ -1420,10 +1410,12 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 texture = c->models[cmd->model_texture.id].texture;
             }
             if (cmd->model_texture.texture != NO_TEXTURE) {
-                LOGM(WARN,
-                     "model_texture: %d has two textures one in the model "
-                     "and one extern",
-                     cmd->model_texture.id);
+                if (texture != NO_TEXTURE) {
+                    LOGM(WARN,
+                         "model_texture: %d has two textures one in the model"
+                         "and one extern",
+                         cmd->model_texture.id);
+                }
                 texture = cmd->model_texture.texture;
             }
 
@@ -1783,8 +1775,8 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT);
 
-    texture_id id = darrayLength(c->textures);
-    darrayPush(c->textures, res);
+    texture_id id = c->texture_idx;
+    c->textures[c->texture_idx++] = res;
     return id;
 }
 
@@ -1983,12 +1975,12 @@ void renderer_destroy_model(struct rcontext *c, model_id id) {
 bool renderer_set_model_texture(struct rcontext *c, model_id model,
                                 texture_id texture) {
     if (model >= (i32)darrayLength(c->models)) {
-        LOGM(ERROR, "invalid model index");
+        LOGM(ERROR, "invalid model index: %d", model);
         return false;
     }
 
     if (texture >= (i32)darrayLength(c->textures)) {
-        LOGM(ERROR, "inavlid texture index");
+        LOGM(ERROR, "inavlid texture index: %d", texture);
         return false;
     }
 
@@ -2020,7 +2012,6 @@ void renderer_deint(struct rcontext *rctx) {
     }
 
     darrayDestroy(rctx->models);
-    darrayDestroy(rctx->textures);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,

@@ -61,8 +61,14 @@ i32 main(void) {
 
     model_id boom_box =
         renderer_create_model(&c->rctx, "assets/models/BoomBox.glb");
+    model_id torus = renderer_create_model(&c->rctx, "assets/models/torus.glb");
+
     texture_id wood =
         renderer_create_texture(&c->rctx, "assets/textures/wood.png");
+    texture_id brick =
+        renderer_create_texture(&c->rctx, "assets/textures/brickwall.png");
+
+    renderer_set_model_texture(&c->rctx, torus, brick);
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
@@ -83,6 +89,9 @@ i32 main(void) {
                           (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0},
                           NO_TEXTURE);
 
+        renderer_push_model_texture(&c->rctx, (vec3){0, 1.5f, 0},
+                                    (vec3){1, 1, 1}, torus);
+
         renderer_push_model_texture(&c->rctx, (vec3){0.0, 0.0, -3.0f},
                                     (vec3){10, 10, 10}, boom_box);
 
@@ -94,6 +103,8 @@ i32 main(void) {
 
     glfwDestroyWindow(c->window);
     glfwTerminate();
+
+    free(c);
 
     return 0;
 }
