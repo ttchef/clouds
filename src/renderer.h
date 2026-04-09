@@ -67,15 +67,21 @@ struct frame_data {
     VkCommandBuffer cmd_buffer;
 };
 
-typedef u32 model_id;
+typedef i32 texture_id;
+typedef i32 model_id;
+
+struct texture {
+    struct image image;
+    bool valid;
+};
 
 struct model {
     struct buffer vertex_buffer;
     struct buffer index_buffer;
     u32 n_index;
 
-    struct image image;
-    bool has_image;
+    texture_id texture;
+    bool valid;
 };
 
 enum {
@@ -150,6 +156,9 @@ struct rcontext {
     struct model *models;
     model_id box_id;
 
+    // dynamic array (darray.h)
+    struct texture *textures;
+
     struct render_queue render_queue;
     struct camera cam;
     VkSampler sampler;
@@ -172,6 +181,10 @@ void renderer_push_model_texture(struct rcontext *rctx, vec3 pos, vec3 scale,
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 
 void renderer_update_cam(struct rcontext *rctx, GLFWwindow *window, f32 dt);
+
+texture_id renderer_create_texture(struct rcontext *rctx, const char *filepath);
+
+void renderer_destroy_texture(struct rcontext *c, texture_id id);
 
 model_id renderer_create_model(struct rcontext *rctx, const char *filepath);
 

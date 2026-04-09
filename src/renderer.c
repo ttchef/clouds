@@ -1006,6 +1006,13 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
     return true;
 }
 
+static bool create_pipeline_layout_descriptors(struct rcontext *c,
+                                               struct pipeline *pipeline,
+                                               VkPushConstantRange pc) {
+
+    return true;
+}
+
 static bool create_model_color_pipeline(struct rcontext *c) {
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
@@ -1271,6 +1278,9 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     rctx->cam.speed = 5.0f;
     rctx->cam.sensitivity = 0.15f;
 
+    // textures
+    rctx->textures = darrayCreate(struct texture);
+
     // models
     rctx->models = darrayCreate(struct model);
     rctx->box_id = renderer_create_model(rctx, "assets/models/box.glb");
@@ -1409,7 +1419,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         } break;
         case DRAW_CMD_TYPE_MODEL_TEXTURE: {
             // TODO: only for now just exit
-            if (!c->models[cmd->model_texture.id].has_image) {
+            if (c->models[cmd->model_texture.id].texture == -1) {
                 LOGM(ERROR, "render model has no texture");
                 exit(1);
             }
@@ -1417,7 +1427,9 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
             // write to the descriptor set
             VkDescriptorImageInfo image_info = {
                 .sampler = c->sampler,
-                .imageView = c->models[cmd->model_texture.id].image.view,
+                .imageView =
+                    c->textures[c->models[cmd->model_texture.id].texture]
+                        .image.view,
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             };
 
@@ -1759,6 +1771,48 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
     c->cam.direction = math_vec3_norm(front);
 }
 
+// bpp always == 4
+// internal helper function
+static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
+                                 void *data) {
+    struct texture res = {0};
+    create_image(c, &res.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    upload_data_to_image(c, &res.image, width * height * 4, data, width, height,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         VK_ACCESS_SHADER_READ_BIT);
+
+    texture_id id = darrayLength(c->textures);
+    darrayPush(c->textures, res);
+    return id;
+}
+
+texture_id renderer_create_texture(struct rcontext *rctx,
+                                   const char *filepath) {
+    i32 width, height, bpp;
+    u8 *data = stbi_load(filepath, &width, &height, &bpp, 4);
+    if (!data) {
+        LOGM(ERROR, "failed to load texture: %s", filepath);
+        return -1;
+    }
+
+    texture_id id = create_texture(rctx, width, height, data);
+    stbi_image_free(data);
+    return id;
+}
+
+void renderer_destroy_texture(struct rcontext *c, texture_id id) {
+    if (id >= (i32)darrayLength(c->textures)) {
+        LOGM(ERROR, "texture id is not valid");
+        return;
+    }
+
+    struct texture *t = &c->textures[id];
+
+    destroy_image(c, &t->image);
+    t->valid = false;
+}
+
 static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
                         void *output_data, u32 n_elements, u32 element_size) {
     u8 *output = output_data;
@@ -1775,6 +1829,8 @@ static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
 
 model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     struct model model = {0};
+    model.valid = true;
+    model.texture = -1;
 
     cgltf_options options = {0};
     cgltf_data *data = NULL;
@@ -1891,14 +1947,12 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
 
     bpp = 4;
 
-    create_image(c, &model.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
-                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-    upload_data_to_image(
-        c, &model.image, width * height * bpp, texture_data, width, height,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
-    stbi_image_free(texture_data);
+    model.texture = create_texture(c, width, height, texture_data);
+    if (model.texture == -1) {
+        LOGM(ERROR, "failed to create model texture: %s", filepath);
+    }
 
-    model.has_image = true;
+    stbi_image_free(texture_data);
 
 end:
 
@@ -1911,11 +1965,12 @@ end:
 }
 
 void renderer_destroy_model(struct rcontext *c, model_id id) {
-    struct model *model = &c->models[id];
-
-    if (model->has_image) {
-        destroy_image(c, &model->image);
+    if (id >= (i32)darrayLength(c->models)) {
+        LOGM(ERROR, "inavlid model id");
+        return;
     }
+
+    struct model *model = &c->models[id];
 
     vmaDestroyBuffer(c->allocator, model->vertex_buffer.handle,
                      model->vertex_buffer.alloc);
@@ -1930,10 +1985,19 @@ void renderer_deint(struct rcontext *rctx) {
     vkDestroySampler(rctx->dev, rctx->sampler, NULL);
 
     for (u32 i = 0; i < darrayLength(rctx->models); i++) {
-        renderer_destroy_model(rctx, i);
+        if (rctx->models[i].valid) {
+            renderer_destroy_model(rctx, i);
+        }
+    }
+
+    for (u32 i = 0; i < darrayLength(rctx->textures); i++) {
+        if (rctx->textures[i].valid) {
+            renderer_destroy_texture(rctx, i);
+        }
     }
 
     darrayDestroy(rctx->models);
+    darrayDestroy(rctx->textures);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         vkDestroySemaphore(rctx->dev, rctx->frame_data[i].image_available,
