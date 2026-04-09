@@ -1307,13 +1307,26 @@ static void push_draw_cmd(struct rcontext *c, struct draw_cmd *cmd) {
     memcpy(&q->cmds[q->count++], cmd, sizeof(struct draw_cmd));
 }
 
-void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
-    struct draw_cmd cmd = (struct draw_cmd){
-        .type = DRAW_CMD_TYPE_BOX,
-        .pos = pos,
-        .scale = scale,
-        .box.color = color,
-    };
+void renderer_push_box(struct rcontext *c, vec3 pos, vec3 scale, vec4 color,
+                       texture_id texture) {
+    struct draw_cmd cmd;
+    if (texture == NO_TEXTURE) {
+        cmd = (struct draw_cmd){
+            .type = DRAW_CMD_TYPE_MODEL_COLOR,
+            .pos = pos,
+            .scale = scale,
+            .model_color.id = c->box_id,
+            .model_color.color = color,
+        };
+    } else {
+        cmd = (struct draw_cmd){
+            .type = DRAW_CMD_TYPE_MODEL_TEXTURE,
+            .pos = pos,
+            .scale = scale,
+            .model_texture.id = c->box_id,
+            .model_texture.texture = texture,
+        };
+    }
 
     push_draw_cmd(c, &cmd);
 }
@@ -1338,6 +1351,7 @@ void renderer_push_model_texture(struct rcontext *c, vec3 pos, vec3 scale,
         .pos = pos,
         .scale = scale,
         .model_texture.id = model,
+        .model_texture.texture = NO_TEXTURE, // model has texture
     };
 
     push_draw_cmd(c, &cmd);
@@ -1367,30 +1381,6 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         matrix m = math_matrix_mul(perspective_view, model);
 
         switch (cmd->type) {
-        case DRAW_CMD_TYPE_BOX: {
-            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              c->model_color_pip.handle);
-
-            VkDeviceSize offsets[] = {0};
-
-            vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
-                                   &c->models[c->box_id].vertex_buffer.handle,
-                                   offsets);
-            vkCmdBindIndexBuffer(data->cmd_buffer,
-                                 c->models[c->box_id].index_buffer.handle, 0,
-                                 VK_INDEX_TYPE_UINT16);
-
-            struct model_color_pc push_constant = {
-                .mat = m, // matrix
-                .color = cmd->box.color,
-            };
-
-            vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct model_color_pc), &push_constant);
-            vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1,
-                             0, 0, 0);
-        } break;
         case DRAW_CMD_TYPE_MODEL_COLOR: {
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                               c->model_color_pip.handle);
@@ -1407,7 +1397,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
 
             struct model_color_pc push_constant = {
                 .mat = m, // matrix
-                .color = cmd->box.color,
+                .color = cmd->model_color.color,
             };
 
             vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
@@ -1419,17 +1409,28 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         } break;
         case DRAW_CMD_TYPE_MODEL_TEXTURE: {
             // TODO: only for now just exit
-            if (c->models[cmd->model_texture.id].texture == -1) {
+            if (c->models[cmd->model_texture.id].texture == NO_TEXTURE &&
+                cmd->model_texture.texture == NO_TEXTURE) {
                 LOGM(ERROR, "render model has no texture");
                 exit(1);
+            }
+
+            texture_id texture = NO_TEXTURE;
+            if (c->models[cmd->model_texture.id].texture != NO_TEXTURE) {
+                texture = c->models[cmd->model_texture.id].texture;
+            }
+            if (cmd->model_texture.texture != NO_TEXTURE) {
+                LOGM(WARN,
+                     "model_texture: %d has two textures one in the model "
+                     "and one extern",
+                     cmd->model_texture.id);
+                texture = cmd->model_texture.texture;
             }
 
             // write to the descriptor set
             VkDescriptorImageInfo image_info = {
                 .sampler = c->sampler,
-                .imageView =
-                    c->textures[c->models[cmd->model_texture.id].texture]
-                        .image.view,
+                .imageView = c->textures[texture].image.view,
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             };
 
@@ -1793,7 +1794,7 @@ texture_id renderer_create_texture(struct rcontext *rctx,
     u8 *data = stbi_load(filepath, &width, &height, &bpp, 4);
     if (!data) {
         LOGM(ERROR, "failed to load texture: %s", filepath);
-        return -1;
+        return NO_TEXTURE;
     }
 
     texture_id id = create_texture(rctx, width, height, data);
@@ -1830,7 +1831,7 @@ static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
 model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     struct model model = {0};
     model.valid = true;
-    model.texture = -1;
+    model.texture = NO_TEXTURE;
 
     cgltf_options options = {0};
     cgltf_data *data = NULL;
@@ -1838,7 +1839,7 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     cgltf_result error = cgltf_parse_file(&options, filepath, &data);
     if (error != cgltf_result_success) {
         LOGM(ERROR, "failed to load gltf model: %s", filepath);
-        return -1;
+        return NO_MODEL;
     }
 
     // TODO: path
@@ -1846,7 +1847,7 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
     if (error != cgltf_result_success) {
         LOGM(ERROR, "failed to load gltf model bufffers: %s", filepath);
         cgltf_free(data);
-        return -1;
+        return NO_MODEL;
     }
 
     // check for unsupported model (that my program cant handle rn xD)
@@ -1942,13 +1943,13 @@ model_id renderer_create_model(struct rcontext *c, const char *filepath) {
                               buffer_view->size, &width, &height, &bpp, 4);
     if (!texture_data) {
         LOGM(ERROR, "failed to load model texture: %s", filepath);
-        return -1;
+        return NO_MODEL;
     }
 
     bpp = 4;
 
     model.texture = create_texture(c, width, height, texture_data);
-    if (model.texture == -1) {
+    if (model.texture == NO_TEXTURE) {
         LOGM(ERROR, "failed to create model texture: %s", filepath);
     }
 
@@ -1977,6 +1978,28 @@ void renderer_destroy_model(struct rcontext *c, model_id id) {
     vmaDestroyBuffer(c->allocator, model->index_buffer.handle,
                      model->index_buffer.alloc);
     *model = (struct model){0};
+}
+
+bool renderer_set_model_texture(struct rcontext *c, model_id model,
+                                texture_id texture) {
+    if (model >= (i32)darrayLength(c->models)) {
+        LOGM(ERROR, "invalid model index");
+        return false;
+    }
+
+    if (texture >= (i32)darrayLength(c->textures)) {
+        LOGM(ERROR, "inavlid texture index");
+        return false;
+    }
+
+    struct model *m = &c->models[model];
+    if (m->texture != NO_TEXTURE) {
+        LOGM(API_DUMP, "overwriting model texture");
+    }
+
+    m->texture = texture;
+
+    return true;
 }
 
 void renderer_deint(struct rcontext *rctx) {

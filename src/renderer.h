@@ -14,6 +14,8 @@
 #include "types.h"
 
 #define FRAMES_IN_FLIGHT 3
+#define NO_MODEL -1
+#define NO_TEXTURE -1
 
 struct api_version {
     u32 major;
@@ -85,7 +87,6 @@ struct model {
 };
 
 enum {
-    DRAW_CMD_TYPE_BOX,
     DRAW_CMD_TYPE_MODEL_COLOR,
     DRAW_CMD_TYPE_MODEL_TEXTURE,
 };
@@ -97,16 +98,17 @@ struct draw_cmd {
 
     union {
         struct {
-            vec4 color;
-        } box;
-
-        struct {
             model_id id;
             vec4 color;
         } model_color;
 
         struct {
             model_id id;
+
+            // only for special purposes
+            // like the box where the model
+            // doesnt have the texture itself
+            texture_id texture;
         } model_texture;
     };
 };
@@ -169,7 +171,8 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
 bool renderer_resize(struct rcontext *rctx, u32 w, u32 h);
 
-void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color);
+void renderer_push_box(struct rcontext *rctx, vec3 pos, vec3 scale, vec4 color,
+                       texture_id texture);
 
 // renders the model in the color specified
 void renderer_push_model_color(struct rcontext *rctx, vec3 pos, vec3 scale,
@@ -189,6 +192,9 @@ void renderer_destroy_texture(struct rcontext *c, texture_id id);
 model_id renderer_create_model(struct rcontext *rctx, const char *filepath);
 
 void renderer_destroy_model(struct rcontext *rctx, model_id id);
+
+bool renderer_set_model_texture(struct rcontext *rctx, model_id model,
+                                texture_id texture);
 
 void renderer_deint(struct rcontext *rctx);
 

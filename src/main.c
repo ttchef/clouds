@@ -60,9 +60,10 @@ i32 main(void) {
     glfwSetWindowUserPointer(ctx.window, &ctx);
     glfwSetWindowSizeCallback(ctx.window, glfw_resize_callback);
 
-    // loading of a model
     model_id boom_box =
         renderer_create_model(&ctx.rctx, "assets/models/BoomBox.glb");
+    texture_id wood =
+        renderer_create_texture(&ctx.rctx, "assets/textures/wood.png");
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(ctx.window)) {
@@ -73,13 +74,15 @@ i32 main(void) {
         renderer_update_cam(&ctx.rctx, ctx.window, dt);
 
         renderer_push_box(&ctx.rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
-                          (vec4){0.2, 0.5, 0.8, 1.0});
+                          (vec4){0.2, 0.5, 0.8, 1.0}, wood);
 
         renderer_push_box(&ctx.rctx, (vec3){0.3, 0.0, -1.5f},
-                          (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
+                          (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0},
+                          NO_TEXTURE);
 
         renderer_push_box(&ctx.rctx, (vec3){-0.3, 0.0, -1.5f},
-                          (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0});
+                          (vec3){0.2, 0.2, 0.2}, (vec4){0.0, 1.0, 0.0, 1.0},
+                          NO_TEXTURE);
 
         renderer_push_model_texture(&ctx.rctx, (vec3){0.0, 0.0, -3.0f},
                                     (vec3){10, 10, 10}, boom_box);
