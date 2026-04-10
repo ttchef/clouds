@@ -158,7 +158,9 @@ struct rcontext {
 
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
-    VkSemaphore finished[FRAMES_IN_FLIGHT];
+
+    // heap allocated array (swapchain_images count)
+    VkSemaphore *finished;
     u32 frame_idx;
     u32 img_idx;
 

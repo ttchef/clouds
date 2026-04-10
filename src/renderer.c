@@ -695,14 +695,6 @@ static bool create_frame_data(struct rcontext *c) {
 
         LOGM(API_DUMP, "created image available semaphor: %d", i);
 
-        if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
-                              &c->finished[i]) != VK_SUCCESS) {
-            LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
-            return false;
-        }
-
-        LOGM(API_DUMP, "created finished semaphor: %d", i);
-
         if (vkCreateFence(c->dev, &fence_create_info, NULL,
                           &c->frame_data[i].in_flight_fence) != VK_SUCCESS) {
             LOGM(ERROR, "failed to create fence: %d", i);
@@ -710,6 +702,17 @@ static bool create_frame_data(struct rcontext *c) {
         }
 
         LOGM(API_DUMP, "created fence: %d", i);
+    }
+
+    c->finished = malloc(sizeof(VkSemaphore) * c->swapchain.n_imgs);
+    for (u32 i = 0; i < c->swapchain.n_imgs; i++) {
+        if (vkCreateSemaphore(c->dev, &sem_create_info, NULL,
+                              &c->finished[i]) != VK_SUCCESS) {
+            LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
+            return false;
+        }
+
+        LOGM(API_DUMP, "created finished semaphor: %d", i);
     }
 
     return true;
@@ -1673,8 +1676,6 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
         return false;
     }
 
-    VkSemaphore finished = c->finished[c->img_idx];
-
     vkResetCommandBuffer(data->cmd_buffer, 0);
     record_cmd_buffer(c);
 
@@ -1683,7 +1684,7 @@ bool renderer_draw(struct rcontext *c, GLFWwindow *window) {
     };
 
     VkSemaphore signal_semphors[] = {
-        finished,
+        c->finished[c->img_idx],
     };
 
     VkPipelineStageFlags wait_stages[] = {
@@ -2091,6 +2092,10 @@ void renderer_deint(struct rcontext *rctx) {
     destroy_pipeline(rctx, &rctx->model_texture_pip);
 
     destroy_texture_manager(rctx);
+
+    if (rctx->finished) {
+        free(rctx->finished);
+    }
 
     destroy_swapchain(rctx);
     vkDestroySurfaceKHR(rctx->instance, rctx->surface, NULL);
