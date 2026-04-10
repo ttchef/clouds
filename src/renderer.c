@@ -2238,28 +2238,82 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
     return true;
 }
 
-light_id renderer_create_light(struct rcontext *c, vec3 pos, vec3 direction,
-                               vec3 color) {
-    struct light res = {
-        .pos = (vec4){pos.x, pos.y, pos.z, 0.0f},
-        .direction = (vec4){direction.x, direction.y, direction.z, 1.0f},
-        .color = (vec4){color.x, color.y, color.z, 1.0f},
+light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
+                                   vec3 color) {
+    struct dir_light res = {
+        .direction = direction,
+        .color = color,
+        .valid = true,
     };
 
-    // TODO: better datastructure ???
     i32 i = 0;
-    for (; i < MAX_LIGHTS; i++) {
-        if (!c->light_manager.valid[i]) {
+    for (; i < MAX_DIRECTIONAL_LIGHTS; i++) {
+        if (!c->light_manager.directional[i].valid) {
             break;
         }
     }
 
-    light_id id = i;
-    c->light_manager.lights[i] = res;
-    c->light_manager.valid[i] = true;
-    c->light_manager.count++;
+    if (i == MAX_DIRECTIONAL_LIGHTS) {
+        LOGM(WARN, "reached maximum number of directional lights");
+        return NO_LIGHT;
+    }
 
-    return id;
+    c->light_manager.directional[i] = res;
+
+    return i;
+}
+
+light_id renderer_create_point_light(struct rcontext *c, vec3 pos, vec3 color,
+                                     f32 distance) {
+    // TODO: distance equation
+    struct point_light res = {
+        .pos = pos,
+        .color = color,
+        .valid = true,
+    };
+
+    i32 i = 0;
+    for (; i < MAX_POINT_LIGHTS; i++) {
+        if (!c->light_manager.point[i].valid) {
+            break;
+        }
+    }
+
+    if (i == MAX_POINT_LIGHTS) {
+        LOGM(WARN, "reached maximum number of point lights");
+        return NO_LIGHT;
+    }
+
+    c->light_manager.point[i] = res;
+
+    return MAX_DIRECTIONAL_LIGHTS + i;
+}
+
+light_id renderer_create_spot_light(struct rcontext *c, vec3 pos, vec3 color,
+                                    f32 distance, f32 cutt_of) {
+    // TODO: distance equation
+    struct spot_light res = {
+        .pos = pos,
+        .color = color,
+        .cutt_off = cutt_of,
+        .valid = true,
+    };
+
+    i32 i = 0;
+    for (; i < MAX_SPOT_LIGHTS; i++) {
+        if (!c->light_manager.spot[i].valid) {
+            break;
+        }
+    }
+
+    if (i == MAX_SPOT_LIGHTS) {
+        LOGM(WARN, "reached maximum number of spot lights");
+        return NO_LIGHT;
+    }
+
+    c->light_manager.spot[i] = res;
+
+    return MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + i;
 }
 
 void renderer_destroy_light(struct rcontext *c, light_id id) {
