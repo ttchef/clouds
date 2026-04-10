@@ -17,14 +17,21 @@
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
+// bindings in global descriptor set
+#define GLOBAL_DESC_TEXTURE_BINDING 0
+#define GLOBAL_DESC_LIGHT_BINDING 1
+#define GLOBAL_DESC_MATRIX_BINDING 2
+
 // push constant
 struct model_color_pc {
-    matrix mat;
+    matrix model;
+    vec4 cam_pos;
     vec4 color;
 };
 
 struct model_texture_pc {
-    matrix mat;
+    matrix model;
+    vec4 cam_pos;
     u32 texture_index;
 };
 
@@ -736,7 +743,10 @@ static bool create_vma(struct rcontext *c) {
 static struct buffer create_device_local_buffer(struct rcontext *c,
                                                 VkDeviceSize size,
                                                 VkBufferUsageFlags flags) {
-    struct buffer res = {0};
+    struct buffer res = {
+        .type = BUFFER_TYPE_DEVICE_LOCAL,
+        .size = size,
+    };
 
     VkBufferCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -752,17 +762,52 @@ static struct buffer create_device_local_buffer(struct rcontext *c,
     if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
                         &res.alloc, NULL) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create device local buffer");
-        return res;
+        return (struct buffer){0};
     }
 
-    res.size = size;
+    return res;
+}
+
+static struct buffer create_host_visible_buffer(struct rcontext *c,
+                                                VkDeviceSize size,
+                                                VkBufferUsageFlags flags) {
+    struct buffer res = {
+        .type = BUFFER_TYPE_HOST_VISIBLE,
+        .size = size,
+    };
+
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .usage = flags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .size = size,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+    };
+
+    VmaAllocationInfo alloc_out;
+
+    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
+                        &res.alloc, &alloc_out) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to host visible buffer");
+        return (struct buffer){0};
+    }
+
+    res.host_visible.mapped = alloc_out.pMappedData;
 
     return res;
 }
 
 static struct buffer
 create_staging_buffer(struct rcontext *c, VkDeviceSize size, const void *data) {
-    struct buffer res = {0};
+    struct buffer res = {
+        .type = BUFFER_TYPE_STAGING,
+        .size = size,
+    };
 
     VkBufferCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -779,10 +824,8 @@ create_staging_buffer(struct rcontext *c, VkDeviceSize size, const void *data) {
     if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
                         &res.alloc, NULL) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create device local buffer");
-        return res;
+        return (struct buffer){0};
     }
-
-    res.size = size;
 
     void *mapped;
     vmaMapMemory(c->allocator, res.alloc, &mapped);
@@ -1046,7 +1089,7 @@ static bool create_model_color_pipeline(struct rcontext *c) {
     };
 
     VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size = sizeof(struct model_color_pc),
     };
 
@@ -1054,6 +1097,8 @@ static bool create_model_color_pipeline(struct rcontext *c) {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_range,
+        .setLayoutCount = 1,
+        .pSetLayouts = &c->descriptors.layout,
     };
 
     if (!create_pipeline(
@@ -1103,7 +1148,7 @@ static bool create_model_texture_pipeline(struct rcontext *c) {
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_range,
         .setLayoutCount = 1,
-        .pSetLayouts = &c->texture_manager.layout,
+        .pSetLayouts = &c->descriptors.layout,
     };
 
     if (!create_pipeline(
@@ -1140,11 +1185,15 @@ static bool create_sampler(struct rcontext *c) {
     return true;
 }
 
-static bool create_texture_manager(struct rcontext *c) {
+static bool create_global_desc(struct rcontext *c) {
     VkDescriptorPoolSize pool_sizes[] = {
         {
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             MAX_TEXTURES * FRAMES_IN_FLIGHT,
+        },
+        {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            FRAMES_IN_FLIGHT * 2,
         },
     };
 
@@ -1157,26 +1206,32 @@ static bool create_texture_manager(struct rcontext *c) {
     };
 
     if (vkCreateDescriptorPool(c->dev, &pool_create_info, NULL,
-                               &c->texture_manager.pool) != VK_SUCCESS) {
+                               &c->descriptors.pool) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create descriptor pool");
         return false;
     }
 
+    // TODO: scalable way of adding bindings
     VkDescriptorSetLayoutBinding bindings[] = {
-        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_TEXTURES,
+        {GLOBAL_DESC_TEXTURE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         MAX_TEXTURES, VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+        {GLOBAL_DESC_LIGHT_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+        {GLOBAL_DESC_MATRIX_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+         VK_SHADER_STAGE_VERTEX_BIT, 0},
     };
 
-    VkDescriptorBindingFlags binding_flags =
-        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+    VkDescriptorBindingFlags binding_flags[] = {
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        0,
+        0,
+    };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
         .sType =
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
         .bindingCount = ARRAY_COUNT(bindings),
-        .pBindingFlags = &binding_flags,
+        .pBindingFlags = binding_flags,
     };
 
     VkDescriptorSetLayoutCreateInfo layout_create_info = {
@@ -1188,12 +1243,11 @@ static bool create_texture_manager(struct rcontext *c) {
     };
 
     if (vkCreateDescriptorSetLayout(c->dev, &layout_create_info, NULL,
-                                    &c->texture_manager.layout) != VK_SUCCESS) {
+                                    &c->descriptors.layout) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create descriptor layout");
         return false;
     }
 
-    c->texture_manager.index = 0;
     u32 counts[FRAMES_IN_FLIGHT];
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
@@ -1209,26 +1263,98 @@ static bool create_texture_manager(struct rcontext *c) {
 
     // to allocate all in one call
     VkDescriptorSetLayout layouts[] = {
-        c->texture_manager.layout,
-        c->texture_manager.layout,
-        c->texture_manager.layout,
+        c->descriptors.layout,
+        c->descriptors.layout,
+        c->descriptors.layout,
     };
 
     VkDescriptorSetAllocateInfo alloc_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .pNext = &count_info,
-        .descriptorPool = c->texture_manager.pool,
+        .descriptorPool = c->descriptors.pool,
         .descriptorSetCount = FRAMES_IN_FLIGHT,
         .pSetLayouts = layouts,
     };
 
-    if (vkAllocateDescriptorSets(c->dev, &alloc_info,
-                                 c->texture_manager.sets) != VK_SUCCESS) {
+    if (vkAllocateDescriptorSets(c->dev, &alloc_info, c->descriptors.sets) !=
+        VK_SUCCESS) {
         LOGM(ERROR, "failed to allocate descriptor sets");
         return false;
     }
 
     return true;
+}
+
+static bool create_texture_manager(struct rcontext *c) {
+    // TODO: even needed??
+    return true;
+}
+
+static bool create_light_manager(struct rcontext *c) {
+    VkDescriptorBufferInfo buffer_info = {
+        .offset = 0,
+        .range = sizeof(struct light_buffer),
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding = GLOBAL_DESC_LIGHT_BINDING,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &buffer_info,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        c->light_manager.buffers[i] = create_host_visible_buffer(
+            c, sizeof(struct light_buffer), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+        buffer_info.buffer = c->light_manager.buffers[i].handle;
+        write.dstSet = c->descriptors.sets[i];
+
+        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+    }
+
+    return true;
+}
+
+static void destroy_light_manager(struct rcontext *c) {
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        vmaDestroyBuffer(c->allocator, c->light_manager.buffers[i].handle,
+                         c->light_manager.buffers[i].alloc);
+    }
+}
+
+static bool create_matrix_ubo(struct rcontext *c) {
+    VkDescriptorBufferInfo buffer_info = {
+        .offset = 0,
+        .range = sizeof(matrix),
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &buffer_info,
+        .descriptorCount = 1,
+        .dstBinding = GLOBAL_DESC_MATRIX_BINDING,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        c->matrix_ubo.buffers[i] = create_host_visible_buffer(
+            c, sizeof(matrix), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+        buffer_info.buffer = c->matrix_ubo.buffers[i].handle;
+        write.dstSet = c->descriptors.sets[i];
+
+        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+    }
+
+    return true;
+}
+
+static void destroy_matrix_ubo(struct rcontext *c) {
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        vmaDestroyBuffer(c->allocator, c->matrix_ubo.buffers[i].handle,
+                         c->matrix_ubo.buffers[i].alloc);
+    }
 }
 
 bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
@@ -1288,11 +1414,23 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created sampler");
 
+    if (!create_global_desc(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created global descriptors");
+
     if (!create_texture_manager(rctx)) {
         return false;
     }
 
     LOGM(INFO, "created texture manager");
+
+    if (!create_light_manager(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created light manager");
 
     if (!create_model_color_pipeline(rctx)) {
         return false;
@@ -1311,6 +1449,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created frame data");
+
+    if (!create_matrix_ubo(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created matrix uniform buffer object");
 
     // staring value
     rctx->render_queue.count = 0;
@@ -1423,6 +1567,10 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         matrix perspective_view = math_matrix_mul(perspective, view);
         matrix m = math_matrix_mul(perspective_view, model);
 
+        // update matrix ubo
+        memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
+               &perspective_view, sizeof(matrix));
+
         switch (cmd->type) {
         case DRAW_CMD_TYPE_MODEL_COLOR: {
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1439,13 +1587,22 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 VK_INDEX_TYPE_UINT16);
 
             struct model_color_pc push_constant = {
-                .mat = m, // matrix
+                .model = model,
+                .cam_pos =
+                    (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
                 .color = cmd->model_color.color,
             };
 
-            vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct model_color_pc), &push_constant);
+            vkCmdPushConstants(
+                data->cmd_buffer, c->model_color_pip.layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                sizeof(struct model_color_pc), &push_constant);
+
+            vkCmdBindDescriptorSets(
+                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                c->model_color_pip.layout, 0, 1,
+                &c->descriptors.sets[c->frame_idx], 0, NULL);
+
             vkCmdDrawIndexed(data->cmd_buffer,
                              c->models[cmd->model_color.id].n_index, 1, 0, 0,
                              0);
@@ -1487,7 +1644,9 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 VK_INDEX_TYPE_UINT16);
 
             struct model_texture_pc push_constant = {
-                .mat = m, // matrix
+                .model = model,
+                .cam_pos =
+                    (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
                 .texture_index = texture,
             };
 
@@ -1499,7 +1658,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
             vkCmdBindDescriptorSets(
                 data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 c->model_texture_pip.layout, 0, 1,
-                &c->texture_manager.sets[c->frame_idx], 0, NULL);
+                &c->descriptors.sets[c->frame_idx], 0, NULL);
 
             vkCmdDrawIndexed(data->cmd_buffer,
                              c->models[cmd->model_texture.id].n_index, 1, 0, 0,
@@ -1809,15 +1968,26 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
 // internal helper function
 static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
                                  void *data) {
-    struct texture res = {0};
+    struct texture res = {
+        .valid = true,
+    };
+
     create_image(c, &res.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
     upload_data_to_image(c, &res.image, width * height * 4, data, width, height,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT);
 
-    texture_id id = c->texture_manager.index;
-    c->texture_manager.textures[c->texture_manager.index++] = res;
+    // TODO: better datastructure ???
+    i32 i = 0;
+    for (; i < MAX_TEXTURES; i++) {
+        if (!c->texture_manager.textures[i].valid) {
+            break;
+        }
+    }
+
+    texture_id id = i;
+    c->texture_manager.textures[i] = res;
 
     VkDescriptorImageInfo image_info = {
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -1827,7 +1997,7 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
 
     VkWriteDescriptorSet write = {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstBinding = 0,
+        .dstBinding = GLOBAL_DESC_TEXTURE_BINDING,
         .dstArrayElement = id,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1835,7 +2005,7 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
     };
 
     for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
-        write.dstSet = c->texture_manager.sets[i];
+        write.dstSet = c->descriptors.sets[i];
 
         vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
     }
@@ -1858,7 +2028,7 @@ texture_id renderer_create_texture(struct rcontext *rctx,
 }
 
 void renderer_destroy_texture(struct rcontext *c, texture_id id) {
-    if (id >= (i32)c->texture_manager.index) {
+    if (id > MAX_TEXTURES || id < 0) {
         LOGM(ERROR, "texture id is not valid");
         return;
     }
@@ -1870,14 +2040,16 @@ void renderer_destroy_texture(struct rcontext *c, texture_id id) {
 }
 
 static void destroy_texture_manager(struct rcontext *c) {
-    vkDestroyDescriptorSetLayout(c->dev, c->texture_manager.layout, NULL);
-    vkDestroyDescriptorPool(c->dev, c->texture_manager.pool, NULL);
-
-    for (u32 i = 0; i < c->texture_manager.index; i++) {
+    for (u32 i = 0; i < MAX_LIGHTS; i++) {
         if (c->texture_manager.textures[i].valid) {
             renderer_destroy_texture(c, i);
         }
     }
+}
+
+static void destroy_global_desc(struct rcontext *c) {
+    vkDestroyDescriptorSetLayout(c->dev, c->descriptors.layout, NULL);
+    vkDestroyDescriptorPool(c->dev, c->descriptors.pool, NULL);
 }
 
 static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
@@ -2055,7 +2227,7 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
         return false;
     }
 
-    if (texture >= (i32)c->texture_manager.index) {
+    if (texture > MAX_TEXTURES || texture < 0) {
         LOGM(ERROR, "inavlid texture index: %d", texture);
         return false;
     }
@@ -2070,9 +2242,68 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
     return true;
 }
 
+light_id renderer_create_light(struct rcontext *c, vec3 pos, vec3 direction,
+                               vec3 color) {
+    struct light res = {
+        .pos = (vec4){pos.x, pos.y, pos.z, 0.0f},
+        .direction = (vec4){direction.x, direction.y, direction.z, 1.0f},
+        .color = (vec4){color.x, color.y, color.z, 1.0f},
+    };
+
+    // TODO: better datastructure ???
+    i32 i = 0;
+    for (; i < MAX_LIGHTS; i++) {
+        if (!c->light_manager.valid[i]) {
+            break;
+        }
+    }
+
+    light_id id = i;
+    c->light_manager.lights[i] = res;
+    c->light_manager.valid[i] = true;
+    c->light_manager.count++;
+
+    return id;
+}
+
+void renderer_destroy_light(struct rcontext *c, light_id id) {
+    if (id > (i32)MAX_LIGHTS || id < 0) {
+        LOGM(ERROR, "invalid index");
+        return;
+    }
+
+    // TODO: destroy resources
+    c->light_manager.valid[id] = false;
+    c->light_manager.count--;
+}
+
+static bool update_lights(struct rcontext *c) {
+    struct light_buffer *gpu_lights =
+        c->light_manager.buffers[c->frame_idx].host_visible.mapped;
+
+    memcpy(&c->light_manager.light_buffer.lights, c->light_manager.lights,
+           sizeof(struct light) * MAX_LIGHTS);
+    c->light_manager.light_buffer.count = c->light_manager.count;
+
+    memcpy(gpu_lights, &c->light_manager.light_buffer,
+           sizeof(struct light_buffer));
+    return true;
+}
+
+bool renderer_update(struct rcontext *c, f32 dt) {
+    (void)dt;
+
+    if (!update_lights(c)) {
+        return false;
+    }
+
+    return true;
+}
+
 void renderer_deint(struct rcontext *rctx) {
     vkDeviceWaitIdle(rctx->dev);
 
+    destroy_matrix_ubo(rctx);
     vkDestroySampler(rctx->dev, rctx->sampler, NULL);
 
     for (u32 i = 0; i < darrayLength(rctx->models); i++) {
@@ -2096,6 +2327,8 @@ void renderer_deint(struct rcontext *rctx) {
     destroy_pipeline(rctx, &rctx->model_texture_pip);
 
     destroy_texture_manager(rctx);
+    destroy_light_manager(rctx);
+    destroy_global_desc(rctx);
 
     if (rctx->finished) {
         free(rctx->finished);

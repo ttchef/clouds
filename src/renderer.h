@@ -16,9 +16,11 @@
 #define FRAMES_IN_FLIGHT 3
 #define NO_MODEL -1
 #define NO_TEXTURE -1
+#define NO_LIGHT -1
 
 // total max of different textures to exist
 #define MAX_TEXTURES 1024
+#define MAX_LIGHTS 256
 
 struct api_version {
     u32 major;
@@ -56,10 +58,24 @@ struct pipeline {
     VkPipelineLayout layout;
 };
 
+enum {
+    BUFFER_TYPE_DEVICE_LOCAL,
+    BUFFER_TYPE_HOST_VISIBLE,
+    BUFFER_TYPE_STAGING,
+};
+
 struct buffer {
+    i32 type;
+
     VkBuffer handle;
     VmaAllocation alloc;
     VkDeviceSize size;
+
+    union {
+        struct host_visible {
+            void *mapped;
+        } host_visible;
+    };
 };
 
 struct frame_data {
@@ -68,8 +84,16 @@ struct frame_data {
     VkCommandBuffer cmd_buffer;
 };
 
+// descriptor handler
+struct global_desc {
+    VkDescriptorPool pool;
+    VkDescriptorSetLayout layout;
+    VkDescriptorSet sets[FRAMES_IN_FLIGHT];
+};
+
 typedef i32 texture_id;
 typedef i32 model_id;
+typedef i32 light_id;
 
 struct texture {
     struct image image;
@@ -77,12 +101,38 @@ struct texture {
 };
 
 struct texture_manager {
-    VkDescriptorPool pool;
-    VkDescriptorSetLayout layout;
-    VkDescriptorSet sets[FRAMES_IN_FLIGHT]; // one big set for every texture
-
-    u32 index;
     struct texture textures[MAX_TEXTURES];
+};
+
+// needs to be with valid alignement
+// for gpu uniform buffers
+struct light {
+    vec4 pos;
+    vec4 direction;
+    vec4 color;
+};
+
+// watch out for alignement
+struct light_buffer {
+    struct light lights[MAX_LIGHTS];
+    u32 count;
+    u32 padding[3];
+};
+
+// works the same as the texture manager
+struct light_manager {
+    struct buffer buffers[FRAMES_IN_FLIGHT];
+
+    // + 1 for the count at the end
+    struct light lights[MAX_LIGHTS + 1];
+    bool valid[MAX_LIGHTS];
+    u32 count;
+
+    struct light_buffer light_buffer;
+};
+
+struct matrix_ubo {
+    struct buffer buffers[FRAMES_IN_FLIGHT];
 };
 
 struct model {
@@ -168,7 +218,11 @@ struct rcontext {
     struct model *models;
     model_id box_id;
 
+    struct global_desc descriptors;
     struct texture_manager texture_manager;
+    struct light_manager light_manager;
+
+    struct matrix_ubo matrix_ubo;
 
     struct render_queue render_queue;
     struct camera cam;
@@ -204,6 +258,13 @@ void renderer_destroy_model(struct rcontext *rctx, model_id id);
 
 bool renderer_set_model_texture(struct rcontext *rctx, model_id model,
                                 texture_id texture);
+
+light_id renderer_create_light(struct rcontext *rctx, vec3 pos, vec3 direction,
+                               vec3 color);
+
+void renderer_destroy_light(struct rcontext *rctx, light_id id);
+
+bool renderer_update(struct rcontext *rctx, f32 dt);
 
 void renderer_deint(struct rcontext *rctx);
 

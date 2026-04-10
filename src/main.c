@@ -64,12 +64,22 @@ i32 main(void) {
     model_id torus = renderer_create_model(&c->rctx, "assets/models/torus.glb");
     model_id logo = renderer_create_model(&c->rctx, "assets/models/logo.glb");
 
+    // TODO: support multiple meshes
+    // model_id zig =
+    //  renderer_create_model(&c->rctx, "assets/models/zthunder.glb");
+
     texture_id wood =
         renderer_create_texture(&c->rctx, "assets/textures/wood.png");
     texture_id brick =
         renderer_create_texture(&c->rctx, "assets/textures/brickwall.png");
 
     renderer_set_model_texture(&c->rctx, torus, brick);
+
+    light_id light = renderer_create_light(
+        &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){1.0, 0.0, 0.0});
+
+    light_id light2 = renderer_create_light(
+        &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){0.0, 0.0, 1.0});
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
@@ -78,6 +88,7 @@ i32 main(void) {
         last_time = current_time;
 
         renderer_update_cam(&c->rctx, c->window, dt);
+        renderer_update(&c->rctx, dt);
 
         renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);

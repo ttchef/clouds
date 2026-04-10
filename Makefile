@@ -5,8 +5,10 @@ SHADER_DIR := $(SRC_DIR)/shaders
 BUILD_DIR := build
 SPV_DIR := $(BUILD_DIR)/spv
 
+SANITIZE := #  -fsanitize=address
+
 CC := gcc
-CFLAGS := -Wall -Wextra -std=c23 -g -I$(LIBS_DIR)
+CFLAGS := -Wall -Wextra -std=c23 -g $(SANITIZE) -I$(LIBS_DIR)
 LDFLAGS := -lglfw -lvulkan -lstdc++ -lm
 
 SRC_FILES := $(wildcard src/*.c)
@@ -15,7 +17,7 @@ OBJ_FILES := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 .PHONY: all clean folders shaders
 
 all: folders shaders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o $(OBJ_FILES)
-	$(CC) $(OBJ_FILES) $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o -o $(BUILD_DIR)/main $(LDFLAGS)
+	$(CC) $(SANITIZE) $(OBJ_FILES) $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o -o $(BUILD_DIR)/main $(LDFLAGS)
 
 folders:
 	mkdir -p $(BUILD_DIR)
@@ -27,7 +29,7 @@ shaders:
 			name=$$(basename $$file); \
 			base=$${name%.*}; \
 			ext=$${name##*.}; \
-			if [ $$ext != "spv" ]; then \
+			if [ "$$ext" != "spv" ] && [ "$$ext" != "glsl" ]; then \
 				glslc -fshader-stage=$$ext $$file -o $(SPV_DIR)/$$base-$$ext.spv; \
 			fi\
 		fi \
