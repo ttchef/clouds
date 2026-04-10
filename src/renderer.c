@@ -1089,7 +1089,7 @@ static bool create_model_color_pipeline(struct rcontext *c) {
     };
 
     VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         .size = sizeof(struct model_color_pc),
     };
 
@@ -1593,10 +1593,9 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 .color = cmd->model_color.color,
             };
 
-            vkCmdPushConstants(
-                data->cmd_buffer, c->model_color_pip.layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                sizeof(struct model_color_pc), &push_constant);
+            vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
+                               VK_SHADER_STAGE_VERTEX_BIT, 0,
+                               sizeof(struct model_color_pc), &push_constant);
 
             vkCmdBindDescriptorSets(
                 data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2277,12 +2276,43 @@ void renderer_destroy_light(struct rcontext *c, light_id id) {
     c->light_manager.count--;
 }
 
+void renderer_set_light_state(struct rcontext *c, light_id id, bool on) {
+    if (id < 0 || id > MAX_LIGHTS) {
+        LOGM(ERROR, "invalid index");
+        return;
+    }
+
+    c->light_manager.valid[id] = on;
+}
+
+void renderer_update_light(struct rcontext *c, light_id id, vec3 pos,
+                           vec3 direction, vec3 color) {
+    if (id < 0 || id > MAX_LIGHTS) {
+        LOGM(ERROR, "invalid index");
+        return;
+    }
+
+    struct light *l = &c->light_manager.lights[id];
+    l->pos = (vec4){pos.x, pos.y, pos.z, 0.0f};
+    l->direction = (vec4){direction.x, direction.y, direction.z, 1.0f};
+    l->color = (vec4){color.x, color.y, color.z, 1.0f};
+}
+
 static bool update_lights(struct rcontext *c) {
     struct light_buffer *gpu_lights =
         c->light_manager.buffers[c->frame_idx].host_visible.mapped;
 
-    memcpy(&c->light_manager.light_buffer.lights, c->light_manager.lights,
-           sizeof(struct light) * MAX_LIGHTS);
+    // write all the valid lights into light buffer
+    i32 buffer_index = 0;
+    for (u32 i = 0; i < c->light_manager.count; i++) {
+        if (!c->light_manager.valid[i]) {
+            continue;
+        }
+
+        c->light_manager.light_buffer.lights[buffer_index++] =
+            c->light_manager.lights[i];
+    }
+
     c->light_manager.light_buffer.count = c->light_manager.count;
 
     memcpy(gpu_lights, &c->light_manager.light_buffer,

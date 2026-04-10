@@ -76,10 +76,11 @@ i32 main(void) {
     renderer_set_model_texture(&c->rctx, torus, brick);
 
     light_id light = renderer_create_light(
-        &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){1.0, 0.0, 0.0});
+        &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){0.0, 1.0, 0.0});
 
     light_id light2 = renderer_create_light(
         &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){0.0, 0.0, 1.0});
+    renderer_set_light_state(&c->rctx, light2, false);
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
@@ -89,6 +90,14 @@ i32 main(void) {
 
         renderer_update_cam(&c->rctx, c->window, dt);
         renderer_update(&c->rctx, dt);
+
+        f32 r = (sin(glfwGetTime()) + 2) * 0.5f;
+        f32 g = (sin(glfwGetTime()) + 2 + 0.5f) * 0.5f;
+        f32 b = (sin(glfwGetTime()) + 2 + 1.0f) * 0.5f;
+
+        math_vec3_print(c->rctx.cam.pos);
+        renderer_update_light(&c->rctx, light, c->rctx.cam.pos,
+                              (vec3){0, -1, 0}, (vec3){r, g, b});
 
         renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);

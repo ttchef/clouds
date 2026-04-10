@@ -2,6 +2,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_nonuniform_qualifier : enable
 
 #include "include/light.glsl"
 
@@ -34,5 +35,5 @@ void main() {
         light_out += calc_dir_light(u_lights.lights[i], normal, view_dir, pc.color.xyz);
     }
     
-    out_color = vec4(u_lights.lights[1].color.xyz, pc.color.w);
+    out_color = vec4(light_out, pc.color.w);
 }

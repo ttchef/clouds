@@ -264,6 +264,11 @@ light_id renderer_create_light(struct rcontext *rctx, vec3 pos, vec3 direction,
 
 void renderer_destroy_light(struct rcontext *rctx, light_id id);
 
+void renderer_set_light_state(struct rcontext *rctx, light_id id, bool on);
+
+void renderer_update_light(struct rcontext *rctx, light_id id, vec3 pos,
+                           vec3 direction, vec3 color);
+
 bool renderer_update(struct rcontext *rctx, f32 dt);
 
 void renderer_deint(struct rcontext *rctx);
