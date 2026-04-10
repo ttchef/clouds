@@ -1789,7 +1789,11 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
         c->cam.yaw += delta.x * c->cam.sensitivity;
         c->cam.pitch += delta.y * c->cam.sensitivity;
 
-        math_clamp(c->cam.pitch, -89.0f, 89.0f);
+        if (c->cam.pitch > 89.0f) {
+            c->cam.pitch = 89.0f;
+        } else if (c->cam.pitch < -89.0f) {
+            c->cam.pitch = -89.0f;
+        }
 
         c->cam.last_mouse = pos;
     }
