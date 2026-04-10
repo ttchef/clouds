@@ -25,6 +25,7 @@ struct model_color_pc {
 
 struct model_texture_pc {
     matrix mat;
+    u32 texture_index;
 };
 
 static struct api_version get_api_version() {
@@ -207,9 +208,19 @@ static bool create_log_dev(struct rcontext *c) {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
 
+    VkPhysicalDeviceDescriptorIndexingFeatures indexing = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+        .runtimeDescriptorArray = VK_TRUE,
+        .descriptorBindingPartiallyBound = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount = VK_TRUE,
+        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+        .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+    };
+
     VkPhysicalDeviceDynamicRenderingFeatures dym_rendering = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
         .dynamicRendering = true,
+        .pNext = &indexing,
     };
 
     VkDeviceCreateInfo create_info = {
@@ -627,8 +638,6 @@ error_path:
 }
 
 static void destroy_pipeline(struct rcontext *c, struct pipeline *pipeline) {
-    vkDestroyDescriptorPool(c->dev, pipeline->desc_pool, NULL);
-    vkDestroyDescriptorSetLayout(c->dev, pipeline->desc_layout, NULL);
     vkDestroyPipelineLayout(c->dev, pipeline->layout, NULL);
     vkDestroyPipeline(c->dev, pipeline->handle, NULL);
 }
@@ -1082,72 +1091,16 @@ static bool create_model_texture_pipeline(struct rcontext *c) {
     };
 
     VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size = sizeof(struct model_texture_pc),
     };
-
-    // TODO: Make a more condence api for creation of pipelines
-    VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, FRAMES_IN_FLIGHT},
-    };
-
-    VkDescriptorPoolCreateInfo pool_create_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = FRAMES_IN_FLIGHT,
-        .poolSizeCount = ARRAY_COUNT(pool_sizes),
-        .pPoolSizes = pool_sizes,
-    };
-
-    if (vkCreateDescriptorPool(c->dev, &pool_create_info, NULL,
-                               &c->model_texture_pip.desc_pool) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to create descriptor pool");
-        return false;
-    }
-
-    VkDescriptorSetLayoutBinding bindings[] = {
-        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
-    };
-
-    VkDescriptorSetLayoutCreateInfo desc_layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = ARRAY_COUNT(bindings),
-        .pBindings = bindings,
-    };
-
-    if (vkCreateDescriptorSetLayout(c->dev, &desc_layout_create_info, NULL,
-                                    &c->model_texture_pip.desc_layout) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to create descriptor set layout");
-        return false;
-    }
-
-    VkDescriptorSetLayout desc_layout[] = {
-        c->model_texture_pip.desc_layout,
-        c->model_texture_pip.desc_layout,
-        c->model_texture_pip.desc_layout,
-    };
-
-    VkDescriptorSetAllocateInfo alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = c->model_texture_pip.desc_pool,
-        .descriptorSetCount = FRAMES_IN_FLIGHT,
-        .pSetLayouts = desc_layout,
-    };
-
-    if (vkAllocateDescriptorSets(c->dev, &alloc_info,
-                                 c->model_texture_pip.desc_sets) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to allocate descriptor sets");
-        return false;
-    }
 
     VkPipelineLayoutCreateInfo layout_create_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .pushConstantRangeCount = 1,
         .pPushConstantRanges = &push_range,
         .setLayoutCount = 1,
-        .pSetLayouts = &c->model_texture_pip.desc_layout,
+        .pSetLayouts = &c->texture_manager.layout,
     };
 
     if (!create_pipeline(
@@ -1178,6 +1131,97 @@ static bool create_sampler(struct rcontext *c) {
     if (vkCreateSampler(c->dev, &create_info, NULL, &c->sampler) !=
         VK_SUCCESS) {
         LOGM(ERROR, "failed to create sampler");
+        return false;
+    }
+
+    return true;
+}
+
+static bool create_texture_manager(struct rcontext *c) {
+    VkDescriptorPoolSize pool_sizes[] = {
+        {
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            MAX_TEXTURES * FRAMES_IN_FLIGHT,
+        },
+    };
+
+    VkDescriptorPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = FRAMES_IN_FLIGHT,
+        .poolSizeCount = ARRAY_COUNT(pool_sizes),
+        .pPoolSizes = pool_sizes,
+        .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+    };
+
+    if (vkCreateDescriptorPool(c->dev, &pool_create_info, NULL,
+                               &c->texture_manager.pool) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create descriptor pool");
+        return false;
+    }
+
+    VkDescriptorSetLayoutBinding bindings[] = {
+        {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_TEXTURES,
+         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+    };
+
+    VkDescriptorBindingFlags binding_flags =
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+        VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+
+    VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
+        .sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+        .bindingCount = ARRAY_COUNT(bindings),
+        .pBindingFlags = &binding_flags,
+    };
+
+    VkDescriptorSetLayoutCreateInfo layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pBindings = bindings,
+        .bindingCount = ARRAY_COUNT(bindings),
+        .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+        .pNext = &flags_info,
+    };
+
+    if (vkCreateDescriptorSetLayout(c->dev, &layout_create_info, NULL,
+                                    &c->texture_manager.layout) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create descriptor layout");
+        return false;
+    }
+
+    c->texture_manager.index = 0;
+    u32 counts[FRAMES_IN_FLIGHT];
+
+    for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        counts[i] = MAX_TEXTURES;
+    }
+
+    VkDescriptorSetVariableDescriptorCountAllocateInfo count_info = {
+        .sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
+        .descriptorSetCount = FRAMES_IN_FLIGHT,
+        .pDescriptorCounts = counts,
+    };
+
+    // to allocate all in one call
+    VkDescriptorSetLayout layouts[] = {
+        c->texture_manager.layout,
+        c->texture_manager.layout,
+        c->texture_manager.layout,
+    };
+
+    VkDescriptorSetAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = &count_info,
+        .descriptorPool = c->texture_manager.pool,
+        .descriptorSetCount = FRAMES_IN_FLIGHT,
+        .pSetLayouts = layouts,
+    };
+
+    if (vkAllocateDescriptorSets(c->dev, &alloc_info,
+                                 c->texture_manager.sets) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to allocate descriptor sets");
         return false;
     }
 
@@ -1240,6 +1284,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created sampler");
+
+    if (!create_texture_manager(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created texture manager");
 
     if (!create_model_color_pipeline(rctx)) {
         return false;
@@ -1419,24 +1469,6 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 texture = cmd->model_texture.texture;
             }
 
-            // write to the descriptor set
-            VkDescriptorImageInfo image_info = {
-                .sampler = c->sampler,
-                .imageView = c->textures[texture].image.view,
-                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            };
-
-            VkWriteDescriptorSet write = {
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = c->model_texture_pip.desc_sets[c->frame_idx],
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &image_info,
-            };
-
-            vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
-
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                               c->model_texture_pip.handle);
 
@@ -1453,15 +1485,19 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
 
             struct model_texture_pc push_constant = {
                 .mat = m, // matrix
+                .texture_index = texture,
             };
 
-            vkCmdPushConstants(data->cmd_buffer, c->model_texture_pip.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct model_texture_pc), &push_constant);
+            vkCmdPushConstants(
+                data->cmd_buffer, c->model_texture_pip.layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                sizeof(struct model_texture_pc), &push_constant);
+
             vkCmdBindDescriptorSets(
                 data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 c->model_texture_pip.layout, 0, 1,
-                &c->model_texture_pip.desc_sets[c->frame_idx], 0, NULL);
+                &c->texture_manager.sets[c->frame_idx], 0, NULL);
+
             vkCmdDrawIndexed(data->cmd_buffer,
                              c->models[cmd->model_texture.id].n_index, 1, 0, 0,
                              0);
@@ -1775,8 +1811,30 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT);
 
-    texture_id id = c->texture_idx;
-    c->textures[c->texture_idx++] = res;
+    texture_id id = c->texture_manager.index;
+    c->texture_manager.textures[c->texture_manager.index++] = res;
+
+    VkDescriptorImageInfo image_info = {
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = res.image.view,
+        .sampler = c->sampler,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding = 0,
+        .dstArrayElement = id,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &image_info,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = c->texture_manager.sets[i];
+
+        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+    }
+
     return id;
 }
 
@@ -1795,15 +1853,26 @@ texture_id renderer_create_texture(struct rcontext *rctx,
 }
 
 void renderer_destroy_texture(struct rcontext *c, texture_id id) {
-    if (id >= (i32)darrayLength(c->textures)) {
+    if (id >= (i32)c->texture_manager.index) {
         LOGM(ERROR, "texture id is not valid");
         return;
     }
 
-    struct texture *t = &c->textures[id];
+    struct texture *t = &c->texture_manager.textures[id];
 
     destroy_image(c, &t->image);
     t->valid = false;
+}
+
+static void destroy_texture_manager(struct rcontext *c) {
+    vkDestroyDescriptorSetLayout(c->dev, c->texture_manager.layout, NULL);
+    vkDestroyDescriptorPool(c->dev, c->texture_manager.pool, NULL);
+
+    for (u32 i = 0; i < c->texture_manager.index; i++) {
+        if (c->texture_manager.textures[i].valid) {
+            renderer_destroy_texture(c, i);
+        }
+    }
 }
 
 static void fill_buffer(u32 input_stride, void *input_data, u32 output_stride,
@@ -1981,7 +2050,7 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
         return false;
     }
 
-    if (texture >= (i32)darrayLength(c->textures)) {
+    if (texture >= (i32)c->texture_manager.index) {
         LOGM(ERROR, "inavlid texture index: %d", texture);
         return false;
     }
@@ -2007,12 +2076,6 @@ void renderer_deint(struct rcontext *rctx) {
         }
     }
 
-    for (u32 i = 0; i < darrayLength(rctx->textures); i++) {
-        if (rctx->textures[i].valid) {
-            renderer_destroy_texture(rctx, i);
-        }
-    }
-
     darrayDestroy(rctx->models);
 
     for (u32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
@@ -2026,6 +2089,8 @@ void renderer_deint(struct rcontext *rctx) {
 
     destroy_pipeline(rctx, &rctx->model_color_pip);
     destroy_pipeline(rctx, &rctx->model_texture_pip);
+
+    destroy_texture_manager(rctx);
 
     destroy_swapchain(rctx);
     vkDestroySurfaceKHR(rctx->instance, rctx->surface, NULL);

@@ -16,6 +16,8 @@
 #define FRAMES_IN_FLIGHT 3
 #define NO_MODEL -1
 #define NO_TEXTURE -1
+
+// total max of different textures to exist
 #define MAX_TEXTURES 1024
 
 struct api_version {
@@ -52,10 +54,6 @@ struct swapchain {
 struct pipeline {
     VkPipeline handle;
     VkPipelineLayout layout;
-
-    VkDescriptorPool desc_pool;
-    VkDescriptorSetLayout desc_layout;
-    VkDescriptorSet desc_sets[FRAMES_IN_FLIGHT];
 };
 
 struct buffer {
@@ -76,6 +74,15 @@ typedef i32 model_id;
 struct texture {
     struct image image;
     bool valid;
+};
+
+struct texture_manager {
+    VkDescriptorPool pool;
+    VkDescriptorSetLayout layout;
+    VkDescriptorSet sets[FRAMES_IN_FLIGHT]; // one big set for every texture
+
+    u32 index;
+    struct texture textures[MAX_TEXTURES];
 };
 
 struct model {
@@ -159,8 +166,7 @@ struct rcontext {
     struct model *models;
     model_id box_id;
 
-    struct texture textures[MAX_TEXTURES];
-    u32 texture_idx;
+    struct texture_manager texture_manager;
 
     struct render_queue render_queue;
     struct camera cam;

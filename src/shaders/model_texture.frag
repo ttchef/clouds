@@ -1,10 +1,17 @@
 
 #version 460
 
+#extension GL_EXT_nonuniform_qualifier : enable
+
 layout (location = 0) in vec2 in_uv;
 layout (location = 1) in vec3 in_normal;
 
-layout (set = 0, binding = 0) uniform sampler2D in_texture;
+layout (set = 0, binding = 0) uniform sampler2D in_textures[];
+
+layout (push_constant) uniform Push {
+    mat4 m;
+    uint texture_index;
+} pc;
 
 layout (location = 0) out vec4 out_color;
 
@@ -14,7 +21,7 @@ void main() {
 
     float brightness = max(dot(unit_norm, light_dir), 0.1);
 
-    vec4 tex_sample = texture(in_texture, in_uv);
+    vec4 tex_sample = texture(in_textures[nonuniformEXT(pc.texture_index)], in_uv);
     
     out_color = vec4(tex_sample.xyz * brightness, tex_sample.w);
 }

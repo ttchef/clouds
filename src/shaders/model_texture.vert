@@ -6,6 +6,7 @@ layout (location = 2) in vec3 in_normal;
 
 layout (push_constant) uniform Push {
     mat4 m;
+    uint texture_index;
 } pc;
 
 layout (location = 0) out vec2 out_uv;
