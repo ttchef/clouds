@@ -4,6 +4,7 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
+#include "../shader_shared.h"
 #include "include/light.glsl"
 
 layout (location = 0) in vec2 in_uv;
@@ -11,8 +12,8 @@ layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec3 in_world_pos;
 
 // has access to them but doesnt use rn
-layout (set = 0, binding = 0) uniform sampler2D in_textures[];
-layout (set = 0, binding = 1) uniform lights {
+layout (set = 0, binding = GLOBAL_DESC_TEXTURE_BINDING) uniform sampler2D in_textures[];
+layout (set = 0, binding = GLOBAL_DESC_LIGHT_BINDING) uniform lights {
     Light lights[MAX_LIGHTS];
     uint count;
 } u_lights;

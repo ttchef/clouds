@@ -91,11 +91,10 @@ i32 main(void) {
         renderer_update_cam(&c->rctx, c->window, dt);
         renderer_update(&c->rctx, dt);
 
-        f32 r = (sin(glfwGetTime()) + 2) * 0.5f;
-        f32 g = (sin(glfwGetTime()) + 2 + 0.5f) * 0.5f;
-        f32 b = (sin(glfwGetTime()) + 2 + 1.0f) * 0.5f;
+        f32 r = (sin(glfwGetTime()) + 2) * 0.2f;
+        f32 g = (sin(glfwGetTime()) + 2 + 0.5f) * 0.2f;
+        f32 b = (sin(glfwGetTime()) + 2 + 1.0f) * 0.2f;
 
-        math_vec3_print(c->rctx.cam.pos);
         renderer_update_light(&c->rctx, light, c->rctx.cam.pos,
                               (vec3){0, -1, 0}, (vec3){r, g, b});
 

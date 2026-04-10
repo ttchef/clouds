@@ -15,12 +15,9 @@
 #include "darray.h"
 #include "log.h"
 
-#define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
+#include "shader_shared.h"
 
-// bindings in global descriptor set
-#define GLOBAL_DESC_TEXTURE_BINDING 0
-#define GLOBAL_DESC_LIGHT_BINDING 1
-#define GLOBAL_DESC_MATRIX_BINDING 2
+#define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
 // push constant
 struct model_color_pc {
