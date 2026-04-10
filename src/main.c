@@ -63,6 +63,8 @@ i32 main(void) {
         renderer_create_model(&c->rctx, "assets/models/BoomBox.glb");
     model_id torus = renderer_create_model(&c->rctx, "assets/models/torus.glb");
     model_id logo = renderer_create_model(&c->rctx, "assets/models/logo.glb");
+    model_id glibglob =
+        renderer_create_model(&c->rctx, "assets/models/Gernade.glb");
 
     // TODO: support multiple meshes
     // model_id zig =
@@ -117,6 +119,8 @@ i32 main(void) {
 
         renderer_push_model_texture(&c->rctx, (vec3){0.0, 3, -3.0f},
                                     (vec3){10, 10, 10}, logo);
+        renderer_push_model_texture(&c->rctx, (vec3){4.0, 3, -3.0f},
+                                    (vec3){1, 1, 1}, glibglob);
 
         renderer_draw(&c->rctx, c->window);
         glfwPollEvents();

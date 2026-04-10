@@ -20,7 +20,9 @@
 
 // total max of different textures to exist
 #define MAX_TEXTURES 1024
-#define MAX_LIGHTS 256
+#define MAX_DIRECTIONAL_LIGHTS 24
+#define MAX_POINT_LIGHTS 128
+#define MAX_SPOT_LIGHTS 128
 
 struct api_version {
     u32 major;
@@ -104,29 +106,85 @@ struct texture_manager {
     struct texture textures[MAX_TEXTURES];
 };
 
+// cpu definition of light
+struct dir_light {
+    vec3 direction;
+    vec3 color;
+    bool valid;
+};
+
+// cpu definition of light
+struct point_light {
+    vec3 pos;
+    vec3 color;
+
+    f32 constant;
+    f32 linear;
+    f32 quadratic;
+    bool valid;
+};
+
+// cpu definition of light
+struct spot_light {
+    vec3 pos;
+    vec3 direction;
+    vec3 color;
+
+    f32 cutt_off;
+
+    f32 constant;
+    f32 linear;
+    f32 quadratic;
+    bool valid;
+};
+
 // needs to be with valid alignement
 // for gpu uniform buffers
-struct light {
-    vec4 pos;
+struct gpu_dir_light {
     vec4 direction;
     vec4 color;
 };
 
+struct gpu_point_light {
+    vec4 pos;
+    vec4 color;
+
+    f32 constant;
+    f32 linear;
+    f32 quadratic;
+    f32 padding;
+};
+
+struct gpu_spot_light {
+    vec4 pos;
+    vec4 direction;
+    vec4 color;
+
+    f32 cutt_off;
+    f32 constant;
+    f32 linear;
+    f32 quadratic;
+};
+
 // watch out for alignement
 struct light_buffer {
-    struct light lights[MAX_LIGHTS];
-    u32 count;
-    u32 padding[3];
+    struct gpu_dir_light directional[MAX_DIRECTIONAL_LIGHTS];
+    struct gpu_point_light point[MAX_POINT_LIGHTS];
+    struct gpu_spot_light spot[MAX_SPOT_LIGHTS];
+
+    u32 directional_count;
+    u32 point_count;
+    u32 spot_count;
+    u32 padding;
 };
 
 // works the same as the texture manager
 struct light_manager {
     struct buffer buffers[FRAMES_IN_FLIGHT];
 
-    // + 1 for the count at the end
-    struct light lights[MAX_LIGHTS + 1];
-    bool valid[MAX_LIGHTS];
-    u32 count;
+    struct dir_light directional[MAX_DIRECTIONAL_LIGHTS];
+    struct point_light point[MAX_POINT_LIGHTS];
+    struct spot_light spot[MAX_SPOT_LIGHTS];
 
     struct light_buffer light_buffer;
 };
@@ -259,8 +317,14 @@ void renderer_destroy_model(struct rcontext *rctx, model_id id);
 bool renderer_set_model_texture(struct rcontext *rctx, model_id model,
                                 texture_id texture);
 
-light_id renderer_create_light(struct rcontext *rctx, vec3 pos, vec3 direction,
-                               vec3 color);
+light_id renderer_create_dir_light(struct rcontext *rctx, vec3 direction,
+                                   vec3 color);
+
+light_id renderer_create_point_light(struct rcontext *rctx, vec3 pos,
+                                     vec3 color, f32 distance);
+
+light_id renderer_create_spot_light(struct rcontext *rctx, vec3 pos, vec3 color,
+                                    f32 distance, f32 cutt_of);
 
 void renderer_destroy_light(struct rcontext *rctx, light_id id);
 
