@@ -77,8 +77,12 @@ i32 main(void) {
 
     renderer_set_model_texture(&c->rctx, torus, brick);
 
-    light_id light = renderer_create_point_light(
-        &c->rctx, (vec3){0, 0, 0}, (vec3){0.7, 0.2, 0.6}, 1000.0f);
+    //    light_id light = renderer_create_point_light(
+    //      &c->rctx, (vec3){0, 0, 0}, (vec3){0.7, 0.2, 0.6}, 1000.0f);
+
+    light_id light =
+        renderer_create_spot_light(&c->rctx, (vec3){0, 0, 0}, (vec3){0, 0, -1},
+                                   (vec3){0.7, 0.2, 0.6}, 50.0f, 12.5f, 17.5f);
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {

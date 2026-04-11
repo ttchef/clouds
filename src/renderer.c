@@ -2316,16 +2316,17 @@ light_id renderer_create_point_light(struct rcontext *c, vec3 pos, vec3 color,
     return create_light_id(LIGHT_TYPE_POINT, i);
 }
 
-light_id renderer_create_spot_light(struct rcontext *c, vec3 pos, vec3 color,
-                                    f32 distance, f32 cutt_of,
-                                    f32 outer_cutt_off) {
+light_id renderer_create_spot_light(struct rcontext *c, vec3 pos,
+                                    vec3 direction, vec3 color, f32 distance,
+                                    f32 cutt_of, f32 outer_cutt_off) {
     f32 kc, kl, kq;
     get_light_distance_coeffecients(distance, &kc, &kl, &kq);
     struct spot_light res = {
         .pos = pos,
+        .direction = direction,
         .color = color,
-        .cutt_off = cutt_of,
-        .outer_cutt_off = outer_cutt_off,
+        .cutt_off = cos(DEG2RAD(cutt_of)),
+        .outer_cutt_off = cos(DEG2RAD(outer_cutt_off)),
         .valid = true,
 
         .constant = kc,
@@ -2427,9 +2428,13 @@ static bool update_lights(struct rcontext *c) {
         struct gpu_point_light gpu_point_light = {
             .pos = math_vec4_from_vec3(light->pos, 1.0f),
             .color = math_vec4_from_vec3(light->color, 1.0f),
-            .constant = light->constant,
-            .linear = light->linear,
-            .quadratic = light->quadratic,
+            .attenuation =
+                (vec4){
+                    light->constant,
+                    light->linear,
+                    light->quadratic,
+                    0.0f,
+                },
         };
 
         c->light_manager.light_buffer
@@ -2446,12 +2451,22 @@ static bool update_lights(struct rcontext *c) {
 
         struct gpu_spot_light gpu_spot_light = {
             .pos = math_vec4_from_vec3(light->pos, 1.0f),
+            .direction = math_vec4_from_vec3(light->direction, 0.0f),
             .color = math_vec4_from_vec3(light->color, 1.0f),
-            .constant = light->constant,
-            .linear = light->linear,
-            .quadratic = light->quadratic,
-            .cutt_off = light->cutt_off,
-            .outer_cutt_off = light->outer_cutt_off,
+            .cut_offs =
+                (vec4){
+                    light->cutt_off,
+                    light->outer_cutt_off,
+                    0.0f,
+                    0.0f,
+                },
+            .attenuation =
+                (vec4){
+                    light->constant,
+                    light->linear,
+                    light->quadratic,
+                    0.0f,
+                },
         };
 
         c->light_manager.light_buffer

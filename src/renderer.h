@@ -139,34 +139,28 @@ struct spot_light {
 
 // needs to be with valid alignement
 // for gpu uniform buffers
-struct gpu_dir_light {
+struct __attribute__((aligned(16))) gpu_dir_light {
     vec4 direction;
     vec4 color;
 };
 
-struct gpu_point_light {
+struct __attribute__((aligned(16))) gpu_point_light {
     vec4 pos;
     vec4 color;
 
-    f32 constant;
-    f32 linear;
-    f32 quadratic;
-    f32 padding;
+    // where x is constant, y is linear and z is qudratic
+    vec4 attenuation;
 };
 
-struct gpu_spot_light {
+struct __attribute__((aligned(16))) gpu_spot_light {
     vec4 pos;
     vec4 direction;
     vec4 color;
 
-    f32 cutt_off;
-    f32 outer_cutt_off;
-
-    f32 constant;
-    f32 linear;
-    f32 quadratic;
-
-    vec3 padding;
+    // where x is cutt_off and y is outer_cutt_off
+    vec4 cut_offs;
+    // where x is constant, y is linear and z is qudratic
+    vec4 attenuation;
 };
 
 // watch out for alignement
@@ -326,9 +320,9 @@ light_id renderer_create_dir_light(struct rcontext *rctx, vec3 direction,
 light_id renderer_create_point_light(struct rcontext *rctx, vec3 pos,
                                      vec3 color, f32 distance);
 
-light_id renderer_create_spot_light(struct rcontext *rctx, vec3 pos, vec3 color,
-                                    f32 distance, f32 cutt_of,
-                                    f32 outer_cutt_of);
+light_id renderer_create_spot_light(struct rcontext *rctx, vec3 pos,
+                                    vec3 direction, vec3 color, f32 distance,
+                                    f32 cutt_of, f32 outer_cutt_of);
 
 void renderer_destroy_light(struct rcontext *rctx, light_id id);
 
