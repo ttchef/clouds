@@ -19,6 +19,12 @@
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
+enum {
+    LIGHT_TYPE_DIRECTIONAL,
+    LIGHT_TYPE_POINT,
+    LIGHT_TYPE_SPOT,
+};
+
 // push constant
 struct model_color_pc {
     matrix model;
@@ -697,15 +703,11 @@ static bool create_frame_data(struct rcontext *c) {
             return false;
         }
 
-        LOGM(API_DUMP, "created image available semaphor: %d", i);
-
         if (vkCreateFence(c->dev, &fence_create_info, NULL,
                           &c->frame_data[i].in_flight_fence) != VK_SUCCESS) {
             LOGM(ERROR, "failed to create fence: %d", i);
             return false;
         }
-
-        LOGM(API_DUMP, "created fence: %d", i);
     }
 
     c->finished = malloc(sizeof(VkSemaphore) * c->swapchain.n_imgs);
@@ -715,8 +717,6 @@ static bool create_frame_data(struct rcontext *c) {
             LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
             return false;
         }
-
-        LOGM(API_DUMP, "created finished semaphor: %d", i);
     }
 
     return true;
@@ -1562,7 +1562,6 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
         matrix model = math_matrix_mul(translate_m, scale_m);
 
         matrix perspective_view = math_matrix_mul(perspective, view);
-        matrix m = math_matrix_mul(perspective_view, model);
 
         // update matrix ubo
         memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
@@ -2036,7 +2035,7 @@ void renderer_destroy_texture(struct rcontext *c, texture_id id) {
 }
 
 static void destroy_texture_manager(struct rcontext *c) {
-    for (u32 i = 0; i < MAX_LIGHTS; i++) {
+    for (u32 i = 0; i < MAX_TEXTURES; i++) {
         if (c->texture_manager.textures[i].valid) {
             renderer_destroy_texture(c, i);
         }
@@ -2238,6 +2237,20 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
     return true;
 }
 
+static light_id create_light_id(i32 type, i32 index) {
+    switch (type) {
+    case LIGHT_TYPE_DIRECTIONAL:
+        return index;
+    case LIGHT_TYPE_POINT:
+        return MAX_DIRECTIONAL_LIGHTS + index;
+    case LIGHT_TYPE_SPOT:
+        return MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + index;
+    }
+
+    LOGM(WARN, "failed to create light");
+    return NO_LIGHT;
+}
+
 light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
                                    vec3 color) {
     struct dir_light res = {
@@ -2260,7 +2273,7 @@ light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
 
     c->light_manager.directional[i] = res;
 
-    return i;
+    return create_light_id(LIGHT_TYPE_DIRECTIONAL, i);
 }
 
 static void get_light_distance_coeffecients(f32 distance, f32 *kc, f32 *kl,
@@ -2300,7 +2313,7 @@ light_id renderer_create_point_light(struct rcontext *c, vec3 pos, vec3 color,
 
     c->light_manager.point[i] = res;
 
-    return MAX_DIRECTIONAL_LIGHTS + i;
+    return create_light_id(LIGHT_TYPE_POINT, i);
 }
 
 light_id renderer_create_spot_light(struct rcontext *c, vec3 pos, vec3 color,
@@ -2334,58 +2347,116 @@ light_id renderer_create_spot_light(struct rcontext *c, vec3 pos, vec3 color,
 
     c->light_manager.spot[i] = res;
 
-    return MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + i;
+    return create_light_id(LIGHT_TYPE_SPOT, i);
 }
 
 void renderer_destroy_light(struct rcontext *c, light_id id) {
-    if (id > (i32)MAX_LIGHTS || id < 0) {
+    if (id > (i32)MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS ||
+        id < 0) {
         LOGM(ERROR, "invalid index");
         return;
     }
 
-    // TODO: destroy resources
-    c->light_manager.valid[id] = false;
-    c->light_manager.count--;
+    // get real id
+    if (id >= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS) {
+        id -= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS;
+
+        c->light_manager.spot[id].valid = false;
+    } else if (id >= MAX_DIRECTIONAL_LIGHTS) {
+        id -= MAX_DIRECTIONAL_LIGHTS;
+
+        c->light_manager.point[id].valid = false;
+    } else {
+        c->light_manager.directional[id].valid = false;
+    }
 }
 
 void renderer_set_light_state(struct rcontext *c, light_id id, bool on) {
-    if (id < 0 || id > MAX_LIGHTS) {
+    if (id < 0 ||
+        id > MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS) {
         LOGM(ERROR, "invalid index");
         return;
     }
 
-    c->light_manager.valid[id] = on;
-}
+    // get real id
+    if (id >= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS) {
+        id -= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS;
 
-void renderer_update_light(struct rcontext *c, light_id id, vec3 pos,
-                           vec3 direction, vec3 color) {
-    if (id < 0 || id > MAX_LIGHTS) {
-        LOGM(ERROR, "invalid index");
-        return;
+        c->light_manager.spot[id].valid = on;
+    } else if (id >= MAX_DIRECTIONAL_LIGHTS) {
+        id -= MAX_DIRECTIONAL_LIGHTS;
+
+        c->light_manager.point[id].valid = on;
+    } else {
+        c->light_manager.directional[id].valid = on;
     }
-
-    struct light *l = &c->light_manager.lights[id];
-    l->pos = (vec4){pos.x, pos.y, pos.z, 0.0f};
-    l->direction = (vec4){direction.x, direction.y, direction.z, 1.0f};
-    l->color = (vec4){color.x, color.y, color.z, 1.0f};
 }
 
 static bool update_lights(struct rcontext *c) {
     struct light_buffer *gpu_lights =
         c->light_manager.buffers[c->frame_idx].host_visible.mapped;
 
-    // write all the valid lights into light buffer
-    i32 buffer_index = 0;
-    for (u32 i = 0; i < c->light_manager.count; i++) {
-        if (!c->light_manager.valid[i]) {
+    c->light_manager.light_buffer.directional_count = 0;
+    c->light_manager.light_buffer.point_count = 0;
+    c->light_manager.light_buffer.spot_count = 0;
+
+    for (u32 i = 0; i < MAX_DIRECTIONAL_LIGHTS; i++) {
+        if (!c->light_manager.directional[i].valid) {
             continue;
         }
 
-        c->light_manager.light_buffer.lights[buffer_index++] =
-            c->light_manager.lights[i];
+        struct dir_light *light = &c->light_manager.directional[i];
+
+        struct gpu_dir_light gpu_dir_light = {
+            .direction = math_vec4_from_vec3(light->direction, 0.0f),
+            .color = math_vec4_from_vec3(light->color, 1.0f),
+        };
+
+        c->light_manager.light_buffer
+            .directional[c->light_manager.light_buffer.directional_count++] =
+            gpu_dir_light;
     }
 
-    c->light_manager.light_buffer.count = c->light_manager.count;
+    for (u32 i = 0; i < MAX_POINT_LIGHTS; i++) {
+        if (!c->light_manager.point[i].valid) {
+            continue;
+        }
+
+        struct point_light *light = &c->light_manager.point[i];
+
+        struct gpu_point_light gpu_point_light = {
+            .pos = math_vec4_from_vec3(light->pos, 1.0f),
+            .color = math_vec4_from_vec3(light->color, 1.0f),
+            .constant = light->constant,
+            .linear = light->linear,
+            .quadratic = light->quadratic,
+        };
+
+        c->light_manager.light_buffer
+            .point[c->light_manager.light_buffer.point_count++] =
+            gpu_point_light;
+    }
+
+    for (u32 i = 0; i < MAX_SPOT_LIGHTS; i++) {
+        if (!c->light_manager.spot[i].valid) {
+            continue;
+        }
+
+        struct spot_light *light = &c->light_manager.spot[i];
+
+        struct gpu_spot_light gpu_spot_light = {
+            .pos = math_vec4_from_vec3(light->pos, 1.0f),
+            .color = math_vec4_from_vec3(light->color, 1.0f),
+            .constant = light->constant,
+            .linear = light->linear,
+            .quadratic = light->quadratic,
+            .cutt_off = light->cutt_off,
+            .outer_cutt_off = light->outer_cutt_off,
+        };
+
+        c->light_manager.light_buffer
+            .spot[c->light_manager.light_buffer.spot_count++] = gpu_spot_light;
+    }
 
     memcpy(gpu_lights, &c->light_manager.light_buffer,
            sizeof(struct light_buffer));

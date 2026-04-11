@@ -11,6 +11,7 @@
 #include <vma/vma.h>
 
 #include "cmath.h"
+#include "shader_shared.h"
 #include "types.h"
 
 #define FRAMES_IN_FLIGHT 3
@@ -20,9 +21,6 @@
 
 // total max of different textures to exist
 #define MAX_TEXTURES 1024
-#define MAX_DIRECTIONAL_LIGHTS 24
-#define MAX_POINT_LIGHTS 128
-#define MAX_SPOT_LIGHTS 128
 
 struct api_version {
     u32 major;
@@ -162,9 +160,13 @@ struct gpu_spot_light {
     vec4 color;
 
     f32 cutt_off;
+    f32 outer_cutt_off;
+
     f32 constant;
     f32 linear;
     f32 quadratic;
+
+    vec3 padding;
 };
 
 // watch out for alignement
@@ -331,9 +333,6 @@ light_id renderer_create_spot_light(struct rcontext *rctx, vec3 pos, vec3 color,
 void renderer_destroy_light(struct rcontext *rctx, light_id id);
 
 void renderer_set_light_state(struct rcontext *rctx, light_id id, bool on);
-
-void renderer_update_light(struct rcontext *rctx, light_id id, vec3 pos,
-                           vec3 direction, vec3 color);
 
 bool renderer_update(struct rcontext *rctx, f32 dt);
 

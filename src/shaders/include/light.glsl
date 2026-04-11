@@ -1,13 +1,39 @@
 
-#define MAX_LIGHTS 256
+#extension GL_GOOGLE_include_directive : require
 
-struct Light {
-    vec4 pos;
+#include "../../shader_shared.h"
+
+struct DirLight {
     vec4 direction;
     vec4 color;  
 };
 
-vec3 calc_dir_light(Light light, vec3 normal, vec3 view_dir, vec3 tex_sample) {
+struct PointLight {
+    vec4 pos;
+    vec4 color;
+
+    float constant;
+    float linear;
+    float quadratic;
+
+    float padding;  
+};
+
+struct SpotLight {  
+    vec4 pos;
+    vec4 color;
+
+    float cutt_off;
+    float outer_cutt_off;
+
+    float constant;
+    float linear;
+    float quadratic;
+
+    vec3 padding;  
+};
+
+vec3 calc_dir_light(DirLight light, vec3 normal, vec3 view_dir, vec3 tex_sample) {
     vec3 light_dir = normalize(-light.direction.xyz);
 
     float diff = max(dot(normal, light_dir), 0.0);
