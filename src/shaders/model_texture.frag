@@ -44,6 +44,10 @@ void main() {
         light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, tex_sample.xyz);
     }
 
+    for (int i = 0; i < u_lights.point_count; i++) {
+        light_out = calc_point_light(u_lights.point[i], normal, in_world_pos, view_dir, tex_sample.xyz);
+    }
+
     out_color = vec4(light_out, tex_sample.w);
 }
 
