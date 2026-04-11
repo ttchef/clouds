@@ -129,6 +129,10 @@ vec3 math_vec3_cross(vec3 a, vec3 b) {
                   a.x * b.y - a.y * b.x};
 }
 
+vec3 math_vec3_from_vec4(vec4 v) { return (vec3){v.x, v.y, v.z}; }
+
+vec4 math_vec4_from_vec3(vec3 v, f32 w) { return (vec4){v.x, v.y, v.z, w}; }
+
 void math_vec2_print(vec2 v) { printf("Vec2: (%.4f, %.4f)\n", v.x, v.y); }
 
 void math_vec3_print(vec3 v) {

@@ -81,6 +81,9 @@ matrix math_matrix_rotate_2d(f32 angle);
 matrix math_matrix_mul(const matrix a, const matrix b);
 
 /* utility */
+vec3 math_vec3_from_vec4(vec4 v);
+vec4 math_vec4_from_vec3(vec3 v, f32 w);
+
 void math_vec2_print(vec2 v);
 void math_vec3_print(vec3 v);
 void math_vec4_print(vec4 v);

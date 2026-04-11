@@ -63,6 +63,8 @@ i32 main(void) {
         renderer_create_model(&c->rctx, "assets/models/BoomBox.glb");
     model_id torus = renderer_create_model(&c->rctx, "assets/models/torus.glb");
     model_id logo = renderer_create_model(&c->rctx, "assets/models/logo.glb");
+    model_id glibglob =
+        renderer_create_model(&c->rctx, "assets/models/Gernade.glb");
 
     // TODO: support multiple meshes
     // model_id zig =
@@ -75,12 +77,18 @@ i32 main(void) {
 
     renderer_set_model_texture(&c->rctx, torus, brick);
 
-    light_id light = renderer_create_light(
-        &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){0.0, 1.0, 0.0});
+    light_id point = renderer_create_point_light(&c->rctx, (vec3){0, 1.5, 0},
+                                                 (vec3){0.7, 0.2, 0.6}, 150.0f);
 
-    light_id light2 = renderer_create_light(
-        &c->rctx, (vec3){0, 1, 0}, (vec3){0, -1, 0}, (vec3){0.0, 0.0, 1.0});
-    renderer_set_light_state(&c->rctx, light2, false);
+    light_id spot =
+        renderer_create_spot_light(&c->rctx, (vec3){0, 1, 0}, (vec3){0, 0, -1},
+                                   (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
+
+    light_id static_spot =
+        renderer_create_spot_light(&c->rctx, (vec3){0, 0, 0}, (vec3){0, 0, -1},
+                                   (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
+
+    renderer_set_light_state(&c->rctx, point, true);
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
@@ -91,12 +99,18 @@ i32 main(void) {
         renderer_update_cam(&c->rctx, c->window, dt);
         renderer_update(&c->rctx, dt);
 
-        f32 r = (sin(glfwGetTime()) + 2) * 0.2f;
-        f32 g = (sin(glfwGetTime()) + 2 + 0.5f) * 0.2f;
-        f32 b = (sin(glfwGetTime()) + 2 + 1.0f) * 0.2f;
+        f32 r = (sin(glfwGetTime()) + 1) * 0.5f;
+        f32 g = (sin(glfwGetTime() + 1.0f) + 1) * 0.5f;
+        f32 b = (sin(glfwGetTime() + 2.0f) + 1) * 0.5f;
 
-        renderer_update_light(&c->rctx, light, c->rctx.cam.pos,
-                              (vec3){0, -1, 0}, (vec3){r, g, b});
+        vec3 light_dir = {
+            -c->rctx.cam.direction.x,
+            -c->rctx.cam.direction.y,
+            -c->rctx.cam.direction.z,
+        };
+
+        renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos, light_dir,
+                                   (vec3){r, g, b}, 150.0f, 12.5f, 17.5f);
 
         renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);
@@ -117,6 +131,8 @@ i32 main(void) {
 
         renderer_push_model_texture(&c->rctx, (vec3){0.0, 3, -3.0f},
                                     (vec3){10, 10, 10}, logo);
+        renderer_push_model_texture(&c->rctx, (vec3){4.0, 3, -3.0f},
+                                    (vec3){1, 1, 1}, glibglob);
 
         renderer_draw(&c->rctx, c->window);
         glfwPollEvents();
