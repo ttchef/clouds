@@ -2393,6 +2393,62 @@ void renderer_set_light_state(struct rcontext *c, light_id id, bool on) {
     }
 }
 
+void renderer_update_dir_light(struct rcontext *c, light_id id, vec3 direction,
+                               vec3 color) {
+    if (id < 0 || id > MAX_DIRECTIONAL_LIGHTS) {
+        LOGM(ERROR, "invalid index");
+        return;
+    }
+
+    c->light_manager.directional[id].direction = direction;
+    c->light_manager.directional[id].color = color;
+}
+
+void renderer_update_point_light(struct rcontext *c, light_id id, vec3 pos,
+                                 vec3 color, f32 distance) {
+    if (id < MAX_DIRECTIONAL_LIGHTS ||
+        id > MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS) {
+        LOGM(ERROR, "invalid index");
+        return;
+    }
+
+    f32 kc, kl, kq;
+    get_light_distance_coeffecients(distance, &kc, &kl, &kq);
+
+    id -= MAX_DIRECTIONAL_LIGHTS;
+
+    c->light_manager.point[id].pos = pos;
+    c->light_manager.point[id].color = color;
+    c->light_manager.point[id].constant = kc;
+    c->light_manager.point[id].linear = kl;
+    c->light_manager.point[id].quadratic = kq;
+}
+
+void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
+                                vec3 direction, vec3 color, f32 distance,
+                                f32 cutt_of, f32 outer_cutt_of) {
+    if (id < MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS ||
+        id > MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS) {
+        LOGM(ERROR, "invalid index");
+        return;
+    }
+
+    f32 kc, kl, kq;
+    get_light_distance_coeffecients(distance, &kc, &kl, &kq);
+
+    id -= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS;
+
+    c->light_manager.spot[id].pos = pos;
+    c->light_manager.spot[id].direction = direction;
+    c->light_manager.spot[id].color = color;
+    c->light_manager.spot[id].cutt_off = cos(DEG2RAD(cutt_of));
+    c->light_manager.spot[id].outer_cutt_off = cos(DEG2RAD(outer_cutt_of));
+
+    c->light_manager.spot[id].constant = kc;
+    c->light_manager.spot[id].linear = kl;
+    c->light_manager.spot[id].quadratic = kq;
+}
+
 static bool update_lights(struct rcontext *c) {
     struct light_buffer *gpu_lights =
         c->light_manager.buffers[c->frame_idx].host_visible.mapped;

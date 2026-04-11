@@ -80,16 +80,12 @@ vec3 calc_spot_light(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir,
     vec3 ambient = 0.05 * light.color.xyz * surface_color * attenuation;
 
     float theta = dot(light_dir, normalize(-light.direction.xyz));
-    if (theta > light.cut_offs.x) {
-        float epsilon = light.cut_offs.x - light.cut_offs.y;
-        float intensity = clamp((theta - light.cut_offs.y) / epsilon, 0.0, 1.0);
+    float epsilon = light.cut_offs.x - light.cut_offs.y;
+    float intensity = clamp((theta - light.cut_offs.y) / epsilon, 0.0, 1.0);
         
-        vec3 diffiuse = light.color.xyz * diff * surface_color * attenuation * intensity;
-        vec3 specular = light.color.xyz * spec * surface_color * attenuation * intensity;
+    vec3 diffiuse = light.color.xyz * diff * surface_color * attenuation * intensity;
+    vec3 specular = light.color.xyz * spec * surface_color * attenuation * intensity;
 
-        return (ambient + diffiuse + specular);
-    }
-
-    return (ambient);
+    return (ambient + diffiuse + specular);
 }
 

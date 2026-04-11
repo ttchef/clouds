@@ -324,6 +324,16 @@ light_id renderer_create_spot_light(struct rcontext *rctx, vec3 pos,
                                     vec3 direction, vec3 color, f32 distance,
                                     f32 cutt_of, f32 outer_cutt_of);
 
+void renderer_update_dir_light(struct rcontext *rctx, light_id id,
+                               vec3 direction, vec3 color);
+
+void renderer_update_point_light(struct rcontext *rctx, light_id id, vec3 pos,
+                                 vec3 color, f32 distance);
+
+void renderer_update_spot_light(struct rcontext *rctx, light_id id, vec3 pos,
+                                vec3 direction, vec3 color, f32 distance,
+                                f32 cutt_of, f32 outer_cutt_of);
+
 void renderer_destroy_light(struct rcontext *rctx, light_id id);
 
 void renderer_set_light_state(struct rcontext *rctx, light_id id, bool on);
