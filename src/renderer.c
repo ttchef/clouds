@@ -2263,13 +2263,27 @@ light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
     return i;
 }
 
+static void get_light_distance_coeffecients(f32 distance, f32 *kc, f32 *kl,
+                                            f32 *kq) {
+    // TODO: check formula if values give good results
+    *kc = 1;
+    *kl = 3 / distance;
+    *kq = 6 / distance;
+}
+
 light_id renderer_create_point_light(struct rcontext *c, vec3 pos, vec3 color,
                                      f32 distance) {
-    // TODO: distance equation
+
+    f32 kc, kl, kq;
+    get_light_distance_coeffecients(distance, &kc, &kl, &kq);
     struct point_light res = {
         .pos = pos,
         .color = color,
         .valid = true,
+
+        .constant = kc,
+        .linear = kl,
+        .quadratic = kq,
     };
 
     i32 i = 0;
@@ -2290,13 +2304,20 @@ light_id renderer_create_point_light(struct rcontext *c, vec3 pos, vec3 color,
 }
 
 light_id renderer_create_spot_light(struct rcontext *c, vec3 pos, vec3 color,
-                                    f32 distance, f32 cutt_of) {
-    // TODO: distance equation
+                                    f32 distance, f32 cutt_of,
+                                    f32 outer_cutt_off) {
+    f32 kc, kl, kq;
+    get_light_distance_coeffecients(distance, &kc, &kl, &kq);
     struct spot_light res = {
         .pos = pos,
         .color = color,
         .cutt_off = cutt_of,
+        .outer_cutt_off = outer_cutt_off,
         .valid = true,
+
+        .constant = kc,
+        .linear = kl,
+        .quadratic = kq,
     };
 
     i32 i = 0;

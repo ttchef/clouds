@@ -131,6 +131,7 @@ struct spot_light {
     vec3 color;
 
     f32 cutt_off;
+    f32 outer_cutt_off;
 
     f32 constant;
     f32 linear;
@@ -324,7 +325,8 @@ light_id renderer_create_point_light(struct rcontext *rctx, vec3 pos,
                                      vec3 color, f32 distance);
 
 light_id renderer_create_spot_light(struct rcontext *rctx, vec3 pos, vec3 color,
-                                    f32 distance, f32 cutt_of);
+                                    f32 distance, f32 cutt_of,
+                                    f32 outer_cutt_of);
 
 void renderer_destroy_light(struct rcontext *rctx, light_id id);
 
