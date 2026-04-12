@@ -183,11 +183,24 @@ struct light_manager {
     struct point_light point[MAX_POINT_LIGHTS];
     struct spot_light spot[MAX_SPOT_LIGHTS];
 
+    // only for directional[0] at the moment
+    struct image shadow_map;
+
+    struct pipeline shadow_pip;
+
     struct light_buffer light_buffer;
+};
+
+struct matrix_ubo_data {
+    matrix proj_view;
+
+    // at the moment the transform matrix for directional[0] light
+    matrix light_space;
 };
 
 struct matrix_ubo {
     struct buffer buffers[FRAMES_IN_FLIGHT];
+    struct matrix_ubo_data data;
 };
 
 struct model {

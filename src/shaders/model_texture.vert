@@ -10,6 +10,7 @@ layout (location = 2) in vec3 in_normal;
 
 layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
     mat4 proj_view;
+    mat4 light_space;
 } u_matrix;
 
 layout (push_constant) uniform Push {

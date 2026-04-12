@@ -91,8 +91,7 @@ void math_matrix_print(matrix *m);
 
 matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
                                 f32 near, f32 far);
-matrix math_matrix_get_orthographic(u32 w, u32 h, matrix *m);
-matrix math_matrix_get_perspective(f32 fov, f32 aspect, f32 near, f32 far);
+matrix math_matrix_perspective(f32 fov, f32 aspect, f32 near, f32 far);
 matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up);
 
 #endif // CMAHTH_H

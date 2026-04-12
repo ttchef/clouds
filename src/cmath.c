@@ -210,7 +210,24 @@ matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up) {
     return m;
 }
 
-matrix math_matrix_get_perspective(f32 fov_deg, f32 aspect, f32 near, f32 far) {
+matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
+                                f32 near, f32 far) {
+    matrix m = {0};
+
+    m.m[0] = 2.0f / (right - left);
+    m.m[5] = -2.0f / (top - bottom);
+    m.m[10] = 1.0f / (far - near);
+
+    m.m[12] = -(right + left) / (right - left);
+    m.m[13] = -(top + bottom) / (top - bottom);
+    m.m[14] = -near / (far - near);
+
+    m.m[15] = 1.0f;
+
+    return m;
+}
+
+matrix math_matrix_perspective(f32 fov_deg, f32 aspect, f32 near, f32 far) {
     f32 fov_rad = fov_deg * (3.14159265f / 180.0f);
     f32 f = 1.0f / tanf(fov_rad / 2.0f);
 

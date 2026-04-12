@@ -38,6 +38,10 @@ struct model_texture_pc {
     u32 texture_index;
 };
 
+struct shadow_pc {
+    matrix model;
+};
+
 static struct api_version get_api_version() {
     u32 instance_version;
     if (vkEnumerateInstanceVersion(&instance_version) != VK_SUCCESS) {
@@ -652,6 +656,173 @@ static void destroy_pipeline(struct rcontext *c, struct pipeline *pipeline) {
     vkDestroyPipeline(c->dev, pipeline->handle, NULL);
 }
 
+static bool create_shadow_pipeline(struct rcontext *c) {
+
+    VkShaderModule vert_module;
+    if (!create_shader_module(c, &vert_module, "build/spv/shadow-vert.spv")) {
+        return false;
+    }
+
+    LOGM(API_DUMP, "created vertex shader module");
+
+    VkPipelineShaderStageCreateInfo shader_stages[] = {
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vert_module,
+            .pName = "main",
+        },
+    };
+
+    VkPipelineRenderingCreateInfo dynamic_rendering = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .colorAttachmentCount = 0,
+        .pColorAttachmentFormats = NULL,
+        .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
+        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+    };
+
+    VkVertexInputBindingDescription binding_desc = {
+        .binding = 0,
+        .stride = sizeof(f32) * 8,
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    VkPipelineVertexInputStateCreateInfo vertex = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .vertexBindingDescriptionCount = 1,
+        .pVertexBindingDescriptions = &binding_desc,
+        .vertexAttributeDescriptionCount = ARRAY_COUNT(attrib_desc),
+        .pVertexAttributeDescriptions = attrib_desc,
+    };
+
+    VkPipelineInputAssemblyStateCreateInfo assembly = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+    };
+
+    VkViewport view = {
+        .width = 1024,
+        .height = 1024,
+        0.0f,
+        1.0f,
+    };
+
+    VkRect2D scissor = {
+        .extent = (VkExtent2D){1024, 1024},
+        .offset = (VkOffset2D){0, 0},
+    };
+
+    VkPipelineViewportStateCreateInfo viewport = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .pViewports = &view,
+        .scissorCount = 1,
+        .pScissors = &scissor,
+    };
+
+    VkPipelineRasterizationStateCreateInfo rasterization = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .lineWidth = 1.0f,
+        .depthClampEnable = VK_FALSE,
+        .polygonMode = VK_POLYGON_MODE_FILL,
+        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable = VK_FALSE,
+    };
+
+    VkPipelineMultisampleStateCreateInfo multisample = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+    };
+
+    VkPipelineDepthStencilStateCreateInfo depth_stencil = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = VK_TRUE,
+        .depthWriteEnable = VK_TRUE,
+        .depthCompareOp = VK_COMPARE_OP_LESS,
+        .minDepthBounds = 0.0f,
+        .maxDepthBounds = 1.0f,
+    };
+
+    VkPipelineColorBlendStateCreateInfo color_blend = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+    };
+
+    VkPushConstantRange push_range = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .size = sizeof(struct shadow_pc),
+    };
+
+    VkPipelineLayoutCreateInfo layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_range,
+        .setLayoutCount = 1,
+        .pSetLayouts = &c->descriptors.layout,
+    };
+
+    if (vkCreatePipelineLayout(c->dev, &layout_create_info, NULL,
+                               &c->light_manager.shadow_pip.layout) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create pipeline layout");
+        goto error_path;
+    }
+
+    VkGraphicsPipelineCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext = &dynamic_rendering,
+        .layout = c->light_manager.shadow_pip.layout,
+        .stageCount = ARRAY_COUNT(shader_stages),
+        .pStages = shader_stages,
+        .pVertexInputState = &vertex,
+        .pInputAssemblyState = &assembly,
+        .pViewportState = &viewport,
+        .pRasterizationState = &rasterization,
+        .pMultisampleState = &multisample,
+        .pDepthStencilState = &depth_stencil,
+        .pColorBlendState = &color_blend,
+        .pDynamicState = NULL,
+        .renderPass = VK_NULL_HANDLE, // better safe than sorry xD
+    };
+
+    if (vkCreateGraphicsPipelines(c->dev, 0, 1, &create_info, NULL,
+                                  &c->light_manager.shadow_pip.handle) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create shadow pipeline");
+        goto error_path;
+    }
+
+    vkDestroyShaderModule(c->dev, vert_module, NULL);
+
+    return true;
+
+error_path:
+    vkDestroyShaderModule(c->dev, vert_module, NULL);
+
+    return false;
+}
+
 static bool create_frame_data(struct rcontext *c) {
     c->frame_idx = 0;
     c->img_idx = 0;
@@ -1086,7 +1257,7 @@ static bool create_model_color_pipeline(struct rcontext *c) {
     };
 
     VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size = sizeof(struct model_color_pc),
     };
 
@@ -1284,6 +1455,7 @@ static bool create_global_desc(struct rcontext *c) {
 
 static bool create_texture_manager(struct rcontext *c) {
     // TODO: even needed??
+    (void)c;
     return true;
 }
 
@@ -1310,6 +1482,11 @@ static bool create_light_manager(struct rcontext *c) {
         vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
     }
 
+    create_image(c, &c->light_manager.shadow_map, 1024, 1024,
+                 VK_FORMAT_D32_SFLOAT,
+                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                     VK_IMAGE_USAGE_SAMPLED_BIT);
+
     return true;
 }
 
@@ -1318,12 +1495,14 @@ static void destroy_light_manager(struct rcontext *c) {
         vmaDestroyBuffer(c->allocator, c->light_manager.buffers[i].handle,
                          c->light_manager.buffers[i].alloc);
     }
+
+    destroy_image(c, &c->light_manager.shadow_map);
 }
 
 static bool create_matrix_ubo(struct rcontext *c) {
     VkDescriptorBufferInfo buffer_info = {
         .offset = 0,
-        .range = sizeof(matrix),
+        .range = sizeof(struct matrix_ubo_data),
     };
 
     VkWriteDescriptorSet write = {
@@ -1335,8 +1514,9 @@ static bool create_matrix_ubo(struct rcontext *c) {
     };
 
     for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
-        c->matrix_ubo.buffers[i] = create_host_visible_buffer(
-            c, sizeof(matrix), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+        c->matrix_ubo.buffers[i] =
+            create_host_visible_buffer(c, sizeof(struct matrix_ubo_data),
+                                       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
 
         buffer_info.buffer = c->matrix_ubo.buffers[i].handle;
         write.dstSet = c->descriptors.sets[i];
@@ -1441,6 +1621,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created model_texture pipeline");
 
+    if (!create_shadow_pipeline(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created shadow pipeline");
+
     if (!create_frame_data(rctx)) {
         return false;
     }
@@ -1541,16 +1727,34 @@ void renderer_push_model_texture(struct rcontext *c, vec3 pos, vec3 scale,
     push_draw_cmd(c, &cmd);
 }
 
-void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
+void render_draw_cmds(struct rcontext *c, struct frame_data *data,
+                      bool shadow_pass) {
     struct render_queue *q = &c->render_queue;
 
     f32 aspect =
         (f32)c->swapchain.extent.width / (f32)c->swapchain.extent.height;
-    matrix perspective = math_matrix_get_perspective(50, aspect, 0.1f, 100.0f);
+    matrix perspective = math_matrix_perspective(50, aspect, 0.1f, 100.0f);
 
     matrix view = math_matrix_look_at(
         c->cam.pos, math_vec3_add(c->cam.pos, c->cam.direction),
         (vec3){0.0f, 1.0f, 0.0f});
+
+    matrix perspective_view = math_matrix_mul(perspective, view);
+
+    // update matrix ubo
+    c->matrix_ubo.data.proj_view = perspective_view;
+
+    vec3 light_dir = c->light_manager.directional[0].direction;
+    vec3 light_pos = (vec3){0, 0, 15};
+    vec3 target = math_vec3_add(light_pos, light_dir);
+
+    c->matrix_ubo.data.light_space =
+        math_matrix_look_at(light_pos, target, (vec3){0, 0, 1});
+
+    matrix ortho = math_matrix_orthographic(-20, -20, 20, 20, 0.1f, 100.0f);
+
+    c->matrix_ubo.data.light_space =
+        math_matrix_mul(ortho, c->matrix_ubo.data.light_space);
 
     for (u32 i = 0; i < q->count; i++) {
         struct draw_cmd *cmd = &q->cmds[i];
@@ -1561,16 +1765,46 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
             math_matrix_scale(cmd->scale.x, cmd->scale.y, cmd->scale.z);
         matrix model = math_matrix_mul(translate_m, scale_m);
 
-        matrix perspective_view = math_matrix_mul(perspective, view);
-
-        // update matrix ubo
-        memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
-               &perspective_view, sizeof(matrix));
-
         switch (cmd->type) {
         case DRAW_CMD_TYPE_MODEL_COLOR: {
-            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              c->model_color_pip.handle);
+            if (shadow_pass) {
+                vkCmdBindPipeline(data->cmd_buffer,
+                                  VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  c->light_manager.shadow_pip.handle);
+
+                struct shadow_pc push_constant = {.model = model};
+
+                vkCmdPushConstants(data->cmd_buffer,
+                                   c->light_manager.shadow_pip.layout,
+                                   VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                   sizeof(struct shadow_pc), &push_constant);
+
+                vkCmdBindDescriptorSets(
+                    data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    c->light_manager.shadow_pip.layout, 0, 1,
+                    &c->descriptors.sets[c->frame_idx], 0, NULL);
+            } else {
+                vkCmdBindPipeline(data->cmd_buffer,
+                                  VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  c->model_color_pip.handle);
+
+                struct model_color_pc push_constant = {
+                    .model = model,
+                    .cam_pos =
+                        (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
+                    .color = cmd->model_color.color,
+                };
+
+                vkCmdPushConstants(
+                    data->cmd_buffer, c->model_color_pip.layout,
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0, sizeof(struct model_color_pc), &push_constant);
+
+                vkCmdBindDescriptorSets(
+                    data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    c->model_color_pip.layout, 0, 1,
+                    &c->descriptors.sets[c->frame_idx], 0, NULL);
+            }
 
             VkDeviceSize offsets[] = {0};
 
@@ -1581,22 +1815,6 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 data->cmd_buffer,
                 c->models[cmd->model_color.id].index_buffer.handle, 0,
                 VK_INDEX_TYPE_UINT16);
-
-            struct model_color_pc push_constant = {
-                .model = model,
-                .cam_pos =
-                    (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
-                .color = cmd->model_color.color,
-            };
-
-            vkCmdPushConstants(data->cmd_buffer, c->model_color_pip.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct model_color_pc), &push_constant);
-
-            vkCmdBindDescriptorSets(
-                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                c->model_color_pip.layout, 0, 1,
-                &c->descriptors.sets[c->frame_idx], 0, NULL);
 
             vkCmdDrawIndexed(data->cmd_buffer,
                              c->models[cmd->model_color.id].n_index, 1, 0, 0,
@@ -1624,8 +1842,46 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 texture = cmd->model_texture.texture;
             }
 
-            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              c->model_texture_pip.handle);
+            if (shadow_pass) {
+                vkCmdBindPipeline(data->cmd_buffer,
+                                  VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  c->light_manager.shadow_pip.handle);
+
+                struct shadow_pc push_constant = {
+                    .model = model,
+                };
+
+                vkCmdPushConstants(data->cmd_buffer,
+                                   c->light_manager.shadow_pip.layout,
+                                   VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                   sizeof(struct shadow_pc), &push_constant);
+
+                vkCmdBindDescriptorSets(
+                    data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    c->light_manager.shadow_pip.layout, 0, 1,
+                    &c->descriptors.sets[c->frame_idx], 0, NULL);
+            } else {
+                vkCmdBindPipeline(data->cmd_buffer,
+                                  VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                  c->model_texture_pip.handle);
+
+                struct model_texture_pc push_constant = {
+                    .model = model,
+                    .cam_pos =
+                        (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
+                    .texture_index = texture,
+                };
+
+                vkCmdPushConstants(
+                    data->cmd_buffer, c->model_texture_pip.layout,
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0, sizeof(struct model_texture_pc), &push_constant);
+
+                vkCmdBindDescriptorSets(
+                    data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    c->model_texture_pip.layout, 0, 1,
+                    &c->descriptors.sets[c->frame_idx], 0, NULL);
+            }
 
             VkDeviceSize offsets[] = {0};
 
@@ -1638,30 +1894,16 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data) {
                 c->models[cmd->model_texture.id].index_buffer.handle, 0,
                 VK_INDEX_TYPE_UINT16);
 
-            struct model_texture_pc push_constant = {
-                .model = model,
-                .cam_pos =
-                    (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
-                .texture_index = texture,
-            };
-
-            vkCmdPushConstants(
-                data->cmd_buffer, c->model_texture_pip.layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                sizeof(struct model_texture_pc), &push_constant);
-
-            vkCmdBindDescriptorSets(
-                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                c->model_texture_pip.layout, 0, 1,
-                &c->descriptors.sets[c->frame_idx], 0, NULL);
-
             vkCmdDrawIndexed(data->cmd_buffer,
                              c->models[cmd->model_texture.id].n_index, 1, 0, 0,
                              0);
         }; break;
         }
     }
-    q->count = 0;
+
+    if (!shadow_pass) {
+        q->count = 0;
+    }
 }
 
 static bool record_cmd_buffer(struct rcontext *c) {
@@ -1676,6 +1918,57 @@ static bool record_cmd_buffer(struct rcontext *c) {
              c->frame_idx);
         return false;
     }
+
+    VkImageMemoryBarrier shadow_mem_barrier = (VkImageMemoryBarrier){
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = c->light_manager.shadow_map.handle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(data->cmd_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, 0, 0, NULL,
+                         0, NULL, 1, &shadow_mem_barrier);
+
+    VkRenderingAttachmentInfo shadow_depth_attachment_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView = c->light_manager.shadow_map.view,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue =
+            {
+                .depthStencil = {1.0f, 0.0f},
+            },
+    };
+
+    VkRenderingInfo shadow_render_info = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .layerCount = 1,
+        .colorAttachmentCount = 0,
+        .pColorAttachments = NULL,
+        .pDepthAttachment = &shadow_depth_attachment_info,
+        .renderArea =
+            {
+                .extent = (VkExtent2D){1024, 1024},
+                .offset = (VkOffset2D){0, 0},
+            },
+    };
+
+    vkCmdBeginRendering(data->cmd_buffer, &shadow_render_info);
+
+    render_draw_cmds(c, data, true);
+
+    vkCmdEndRendering(data->cmd_buffer);
 
     VkImageMemoryBarrier mem_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1771,7 +2064,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     vkCmdBeginRendering(data->cmd_buffer, &render_info);
 
-    render_draw_cmds(c, data);
+    render_draw_cmds(c, data, false);
 
     vkCmdEndRendering(data->cmd_buffer);
 
@@ -2540,6 +2833,10 @@ bool renderer_update(struct rcontext *c, f32 dt) {
     if (!update_lights(c)) {
         return false;
     }
+
+    // update matrix ubo
+    memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
+           &c->matrix_ubo.data, sizeof(struct matrix_ubo_data));
 
     return true;
 }
