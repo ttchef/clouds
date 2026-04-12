@@ -46,8 +46,8 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 frag_pos, vec3 view_di
     vec3 light_dir = normalize(light.pos.xyz - frag_pos);
     float diff = max(dot(normal, light_dir), 0.0);
 
-    vec3 reflect_dir = reflect(-light_dir, normal);
-    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
+    vec3 halfway_dir = normalize(light_dir + view_dir);
+    float spec = pow(max(dot(normal, halfway_dir), 0.0), 128.0);
 
     float constant = light.attenuation.x;
     float linear = light.attenuation.y;
@@ -67,8 +67,8 @@ vec3 calc_spot_light(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir,
     vec3 light_dir = normalize(light.pos.xyz - frag_pos);
     float diff = max(dot(normal, light_dir), 0.0);
 
-    vec3 reflect_dir = reflect(-light_dir, normal);
-    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
+    vec3 halfway_dir = normalize(light_dir + view_dir);
+    float spec = pow(max(dot(normal, halfway_dir), 0.0), 128.0);
 
     float constant = light.attenuation.x;
     float linear = light.attenuation.y;
