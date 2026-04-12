@@ -721,24 +721,10 @@ static bool create_shadow_pipeline(struct rcontext *c) {
         .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
     };
 
-    VkViewport view = {
-        .width = 1024,
-        .height = 1024,
-        0.0f,
-        1.0f,
-    };
-
-    VkRect2D scissor = {
-        .extent = (VkExtent2D){1024, 1024},
-        .offset = (VkOffset2D){0, 0},
-    };
-
     VkPipelineViewportStateCreateInfo viewport = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
-        .pViewports = &view,
         .scissorCount = 1,
-        .pScissors = &scissor,
     };
 
     VkPipelineRasterizationStateCreateInfo rasterization = {
@@ -746,7 +732,7 @@ static bool create_shadow_pipeline(struct rcontext *c) {
         .lineWidth = 1.0f,
         .depthClampEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .cullMode = VK_CULL_MODE_NONE,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
     };
@@ -763,6 +749,17 @@ static bool create_shadow_pipeline(struct rcontext *c) {
         .depthCompareOp = VK_COMPARE_OP_LESS,
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f,
+    };
+
+    VkDynamicState dym_states[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR,
+    };
+
+    VkPipelineDynamicStateCreateInfo dym_state = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = ARRAY_COUNT(dym_states),
+        .pDynamicStates = dym_states,
     };
 
     VkPipelineColorBlendStateCreateInfo color_blend = {
@@ -802,7 +799,7 @@ static bool create_shadow_pipeline(struct rcontext *c) {
         .pMultisampleState = &multisample,
         .pDepthStencilState = &depth_stencil,
         .pColorBlendState = &color_blend,
-        .pDynamicState = NULL,
+        .pDynamicState = &dym_state,
         .renderPass = VK_NULL_HANDLE, // better safe than sorry xD
     };
 
@@ -1357,7 +1354,8 @@ static bool create_global_desc(struct rcontext *c) {
     VkDescriptorPoolSize pool_sizes[] = {
         {
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            MAX_TEXTURES * FRAMES_IN_FLIGHT,
+            MAX_TEXTURES * FRAMES_IN_FLIGHT +
+                FRAMES_IN_FLIGHT, // TODO: change with shadow map
         },
         {
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1387,10 +1385,13 @@ static bool create_global_desc(struct rcontext *c) {
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
         {GLOBAL_DESC_MATRIX_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
          VK_SHADER_STAGE_VERTEX_BIT, 0},
+        {GLOBAL_DESC_SHADOW_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         1, VK_SHADER_STAGE_FRAGMENT_BIT, 0},
     };
 
     VkDescriptorBindingFlags binding_flags[] = {
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        0,
         0,
         0,
     };
@@ -1486,6 +1487,25 @@ static bool create_light_manager(struct rcontext *c) {
                  VK_FORMAT_D32_SFLOAT,
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                      VK_IMAGE_USAGE_SAMPLED_BIT);
+
+    VkDescriptorImageInfo image_info = {
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = c->light_manager.shadow_map.view,
+        .sampler = c->sampler,
+    };
+
+    write = (VkWriteDescriptorSet){
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstBinding = GLOBAL_DESC_SHADOW_BINDING,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &image_info,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = c->descriptors.sets[i];
+        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+    }
 
     return true;
 }
@@ -1731,31 +1751,6 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
                       bool shadow_pass) {
     struct render_queue *q = &c->render_queue;
 
-    f32 aspect =
-        (f32)c->swapchain.extent.width / (f32)c->swapchain.extent.height;
-    matrix perspective = math_matrix_perspective(50, aspect, 0.1f, 100.0f);
-
-    matrix view = math_matrix_look_at(
-        c->cam.pos, math_vec3_add(c->cam.pos, c->cam.direction),
-        (vec3){0.0f, 1.0f, 0.0f});
-
-    matrix perspective_view = math_matrix_mul(perspective, view);
-
-    // update matrix ubo
-    c->matrix_ubo.data.proj_view = perspective_view;
-
-    vec3 light_dir = c->light_manager.directional[0].direction;
-    vec3 light_pos = (vec3){0, 0, 15};
-    vec3 target = math_vec3_add(light_pos, light_dir);
-
-    c->matrix_ubo.data.light_space =
-        math_matrix_look_at(light_pos, target, (vec3){0, 0, 1});
-
-    matrix ortho = math_matrix_orthographic(-20, -20, 20, 20, 0.1f, 100.0f);
-
-    c->matrix_ubo.data.light_space =
-        math_matrix_mul(ortho, c->matrix_ubo.data.light_space);
-
     for (u32 i = 0; i < q->count; i++) {
         struct draw_cmd *cmd = &q->cmds[i];
 
@@ -1922,7 +1917,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
     VkImageMemoryBarrier shadow_mem_barrier = (VkImageMemoryBarrier){
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = c->light_manager.shadow_map.handle,
@@ -1966,9 +1961,43 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     vkCmdBeginRendering(data->cmd_buffer, &shadow_render_info);
 
+    VkViewport viewport1 = {
+        .width = 1024,
+        .height = 1024,
+        .maxDepth = 1.0f,
+    };
+
+    VkRect2D scissor1 = {
+        .extent = (VkExtent2D){1024, 1024},
+        .offset = (VkOffset2D){0, 0},
+    };
+
+    vkCmdSetViewport(data->cmd_buffer, 0, 1, &viewport1);
+    vkCmdSetScissor(data->cmd_buffer, 0, 1, &scissor1);
+
     render_draw_cmds(c, data, true);
 
     vkCmdEndRendering(data->cmd_buffer);
+
+    shadow_mem_barrier = (VkImageMemoryBarrier){
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .image = c->light_manager.shadow_map.handle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+    };
+
+    vkCmdPipelineBarrier(data->cmd_buffer,
+                         VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0,
+                         NULL, 1, &shadow_mem_barrier);
 
     VkImageMemoryBarrier mem_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1993,7 +2022,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
     mem_barrier = (VkImageMemoryBarrier){
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = c->swapchain.depth_images[c->img_idx].handle,
@@ -2834,6 +2863,31 @@ bool renderer_update(struct rcontext *c, f32 dt) {
         return false;
     }
 
+    // proj_view
+    f32 aspect =
+        (f32)c->swapchain.extent.width / (f32)c->swapchain.extent.height;
+    matrix perspective = math_matrix_perspective(50, aspect, 0.1f, 100.0f);
+    matrix view = math_matrix_look_at(
+        c->cam.pos, math_vec3_add(c->cam.pos, c->cam.direction),
+        (vec3){0.0f, 1.0f, 0.0f});
+    c->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
+
+    // light_space
+    vec3 light_dir = math_vec3_norm(c->light_manager.directional[0].direction);
+    vec3 light_pos = (vec3){0, 10, 10};
+    vec3 target = (vec3){0, 0, 0}; // math_vec3_add(light_pos, light_dir);
+
+    vec3 up = (vec3){0, 1, 0};
+
+    // TODO: do teh checking
+    // if (fabsf(math_vec3_dot(light_dir, up)) > 0.99f) {
+    //  up = (vec3){1, 0, 0};
+    // }
+
+    matrix light_view = math_matrix_look_at(light_pos, target, up);
+    matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
+
+    c->matrix_ubo.data.light_space = math_matrix_mul(ortho, light_view);
     // update matrix ubo
     memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
            &c->matrix_ubo.data, sizeof(struct matrix_ubo_data));
@@ -2866,6 +2920,7 @@ void renderer_deint(struct rcontext *rctx) {
 
     destroy_pipeline(rctx, &rctx->model_color_pip);
     destroy_pipeline(rctx, &rctx->model_texture_pip);
+    destroy_pipeline(rctx, &rctx->light_manager.shadow_pip);
 
     destroy_texture_manager(rctx);
     destroy_light_manager(rctx);

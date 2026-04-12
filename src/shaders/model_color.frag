@@ -10,6 +10,7 @@
 layout (location = 0) in vec2 in_uv;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec3 in_world_pos;
+layout (location = 3) in vec4 in_light_space_pos;
 
 // has access to them but doesnt use rn
 layout (set = 0, binding = GLOBAL_DESC_TEXTURE_BINDING) uniform sampler2D in_textures[];
@@ -25,6 +26,8 @@ layout (set = 0, binding = GLOBAL_DESC_LIGHT_BINDING) uniform lights {
 
     uint padding;
 } u_lights;
+
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_BINDING) uniform sampler2D u_shadow;
 
 layout (push_constant) uniform Push {
     mat4 model;
@@ -43,7 +46,7 @@ void main() {
     vec3 color = pow(pc.color.xyz, vec3(gamma));
 
     for (int i = 0; i < u_lights.directional_count; i++) {
-        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, color);
+        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, color, u_shadow, in_light_space_pos);
     }
 
     for (int i = 0; i < u_lights.point_count; i++) {

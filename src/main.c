@@ -26,6 +26,7 @@ i32 main(void) {
         return 1;
     }
 
+    glfwWindowHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     c->window = glfwCreateWindow(800, 600, "Clouds", NULL, NULL);
     if (!c->window) {
@@ -77,18 +78,21 @@ i32 main(void) {
 
     renderer_set_model_texture(&c->rctx, torus, brick);
 
-    light_id point = renderer_create_point_light(&c->rctx, (vec3){0, 1.5, 0},
-                                                 (vec3){0.7, 0.2, 0.6}, 150.0f);
+    // light_id point = renderer_create_point_light(&c->rctx, (vec3){0, 1.5, 0},
+    //                                         (vec3){0.7, 0.2, 0.6}, 150.0f);
 
     light_id spot =
         renderer_create_spot_light(&c->rctx, (vec3){0, 1, 0}, (vec3){0, 0, -1},
                                    (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
 
-    light_id static_spot =
-        renderer_create_spot_light(&c->rctx, (vec3){0, 0, 0}, (vec3){0, 0, -1},
-                                   (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
+    // light_id static_spot =
+    //     renderer_create_spot_light(&c->rctx,
+    //     (vec3){0, 0, 0},
+    //     (vec3){0, 0, -1},
+    //                             (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
 
-    renderer_set_light_state(&c->rctx, point, true);
+    light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
+                                             (vec3){1.0, 0.0, 0.0});
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
