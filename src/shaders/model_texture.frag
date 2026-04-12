@@ -59,13 +59,8 @@ void main() {
 
     // gamma correction
     light_out = pow(light_out, vec3(1.0 / gamma));
-
-   vec3 projCoords = in_light_space_pos.xyz / in_light_space_pos.w;
-    projCoords.xy = projCoords.xy * 0.5 + 0.5;
-    float closestDepth = texture(u_shadow, projCoords.xy).r;
-    out_color = vec4(closestDepth, closestDepth, closestDepth, 1.0);
-    
-    // out_color = vec4(light_out, tex_sample.w);
+        
+    out_color = vec4(light_out, tex_sample.w);
 }
 
 

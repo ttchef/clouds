@@ -2886,6 +2886,8 @@ bool renderer_update(struct rcontext *c, f32 dt) {
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
     matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
+    ortho.m[10] *= -1.0f;
+    ortho.m[14] *= -1.0f;
 
     c->matrix_ubo.data.light_space = math_matrix_mul(ortho, light_view);
     // update matrix ubo
