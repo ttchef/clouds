@@ -35,23 +35,27 @@ layout (push_constant) uniform Push {
 layout (location = 0) out vec4 out_color;
 
 void main() {
+    float gamma = 2.2;
     vec3 light_out = vec3(0.0);
 
     vec3 normal = normalize(in_normal);
     vec3 view_dir = normalize(pc.view_pos.xyz - in_world_pos);
+    vec3 color = pow(pc.color.xyz, vec3(gamma));
 
     for (int i = 0; i < u_lights.directional_count; i++) {
-        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, pc.color.xyz);
+        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, color);
     }
 
     for (int i = 0; i < u_lights.point_count; i++) {
-        light_out += calc_point_light(u_lights.point[i], normal, in_world_pos, view_dir, pc.color.xyz);
+        light_out += calc_point_light(u_lights.point[i], normal, in_world_pos, view_dir, color);
     }
 
     for (int i = 0; i < u_lights.spot_count; i++) {
-        light_out += calc_spot_light(u_lights.spot[i], normal, in_world_pos, view_dir, pc.color.xyz);
+        light_out += calc_spot_light(u_lights.spot[i], normal, in_world_pos, view_dir, color);
     }
 
+    // gamma correction
+    light_out = pow(light_out, vec3(1.0 / gamma));
     
     out_color = vec4(light_out, pc.color.w);
 }
