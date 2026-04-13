@@ -94,6 +94,7 @@ struct global_desc {
 typedef i32 texture_id;
 typedef i32 model_id;
 typedef i32 light_id;
+typedef i32 shadow_id;
 
 struct texture {
     struct image image;
@@ -183,12 +184,27 @@ struct light_manager {
     struct point_light point[MAX_POINT_LIGHTS];
     struct spot_light spot[MAX_SPOT_LIGHTS];
 
-    // only for directional[0] at the moment
-    struct image shadow_map;
+    struct light_buffer light_buffer;
+};
+
+struct shadow_map {
+    struct image map;
+    matrix transform;
+    bool valid;
+};
+
+struct shadow_cube_map {
+    struct image map;
+    matrix transform[6];
+    bool valid;
+};
+
+struct shadow_manager {
+    struct shadow_map directional[MAX_DIRECTIONAL_LIGHTS];
+    struct shadow_cube_map point[MAX_POINT_LIGHTS];
+    struct shadow_map spot[MAX_SPOT_LIGHTS];
 
     struct pipeline shadow_pip;
-
-    struct light_buffer light_buffer;
 };
 
 struct matrix_ubo_data {

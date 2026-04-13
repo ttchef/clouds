@@ -732,9 +732,9 @@ static bool create_shadow_pipeline(struct rcontext *c) {
         .lineWidth = 1.0f,
         .depthClampEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_NONE,
+        .cullMode = VK_CULL_MODE_FRONT_BIT,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
-        .depthBiasEnable = VK_FALSE,
+        .depthBiasEnable = VK_TRUE,
     };
 
     VkPipelineMultisampleStateCreateInfo multisample = {
@@ -1515,9 +1515,11 @@ static void destroy_light_manager(struct rcontext *c) {
         vmaDestroyBuffer(c->allocator, c->light_manager.buffers[i].handle,
                          c->light_manager.buffers[i].alloc);
     }
-
-    destroy_image(c, &c->light_manager.shadow_map);
 }
+
+static bool create_shadow_manager(struct rcontext *c) { return true; }
+
+static void destroy_shadow_manager(struct rcontext *c) {}
 
 static bool create_matrix_ubo(struct rcontext *c) {
     VkDescriptorBufferInfo buffer_info = {
@@ -2873,16 +2875,9 @@ bool renderer_update(struct rcontext *c, f32 dt) {
     c->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
 
     // light_space
-    vec3 light_dir = math_vec3_norm(c->light_manager.directional[0].direction);
     vec3 light_pos = (vec3){0, 10, 10};
-    vec3 target = (vec3){0, 0, 0}; // math_vec3_add(light_pos, light_dir);
-
+    vec3 target = (vec3){0, 0, 0};
     vec3 up = (vec3){0, 1, 0};
-
-    // TODO: do teh checking
-    // if (fabsf(math_vec3_dot(light_dir, up)) > 0.99f) {
-    //  up = (vec3){1, 0, 0};
-    // }
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
     matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
