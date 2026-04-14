@@ -19,6 +19,9 @@
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
+// a square a = b side
+#define SHADOW_MAP_SIZE 1024
+
 enum {
     LIGHT_TYPE_DIRECTIONAL,
     LIGHT_TYPE_POINT,
@@ -40,7 +43,12 @@ struct model_texture_pc {
 
 struct shadow_pc {
     matrix model;
+    matrix light_space;
 };
+
+// TODO: move out of the renderer
+static bool create_shadow_pipeline(struct rcontext *c,
+                                   struct pipeline *pipeline);
 
 static struct api_version get_api_version() {
     u32 instance_version;
@@ -656,7 +664,8 @@ static void destroy_pipeline(struct rcontext *c, struct pipeline *pipeline) {
     vkDestroyPipeline(c->dev, pipeline->handle, NULL);
 }
 
-static bool create_shadow_pipeline(struct rcontext *c) {
+static bool create_shadow_pipeline(struct rcontext *c,
+                                   struct pipeline *pipeline) {
 
     VkShaderModule vert_module;
     if (!create_shader_module(c, &vert_module, "build/spv/shadow-vert.spv")) {
@@ -780,8 +789,7 @@ static bool create_shadow_pipeline(struct rcontext *c) {
     };
 
     if (vkCreatePipelineLayout(c->dev, &layout_create_info, NULL,
-                               &c->light_manager.shadow_pip.layout) !=
-        VK_SUCCESS) {
+                               &pipeline->layout) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create pipeline layout");
         goto error_path;
     }
@@ -789,7 +797,7 @@ static bool create_shadow_pipeline(struct rcontext *c) {
     VkGraphicsPipelineCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &dynamic_rendering,
-        .layout = c->light_manager.shadow_pip.layout,
+        .layout = pipeline->layout,
         .stageCount = ARRAY_COUNT(shader_stages),
         .pStages = shader_stages,
         .pVertexInputState = &vertex,
@@ -804,8 +812,7 @@ static bool create_shadow_pipeline(struct rcontext *c) {
     };
 
     if (vkCreateGraphicsPipelines(c->dev, 0, 1, &create_info, NULL,
-                                  &c->light_manager.shadow_pip.handle) !=
-        VK_SUCCESS) {
+                                  &pipeline->handle) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create shadow pipeline");
         goto error_path;
     }
@@ -1483,30 +1490,6 @@ static bool create_light_manager(struct rcontext *c) {
         vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
     }
 
-    create_image(c, &c->light_manager.shadow_map, 1024, 1024,
-                 VK_FORMAT_D32_SFLOAT,
-                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                     VK_IMAGE_USAGE_SAMPLED_BIT);
-
-    VkDescriptorImageInfo image_info = {
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .imageView = c->light_manager.shadow_map.view,
-        .sampler = c->sampler,
-    };
-
-    write = (VkWriteDescriptorSet){
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstBinding = GLOBAL_DESC_SHADOW_BINDING,
-        .descriptorCount = 1,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo = &image_info,
-    };
-
-    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
-        write.dstSet = c->descriptors.sets[i];
-        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
-    }
-
     return true;
 }
 
@@ -1517,9 +1500,14 @@ static void destroy_light_manager(struct rcontext *c) {
     }
 }
 
-static bool create_shadow_manager(struct rcontext *c) { return true; }
+static bool create_shadow_manager(struct rcontext *c) {
+    create_shadow_pipeline(c, &c->shadow_manager.shadow_pip);
+    return true;
+}
 
-static void destroy_shadow_manager(struct rcontext *c) {}
+static void destroy_shadow_manager(struct rcontext *c) {
+    destroy_pipeline(c, &c->shadow_manager.shadow_pip);
+}
 
 static bool create_matrix_ubo(struct rcontext *c) {
     VkDescriptorBufferInfo buffer_info = {
@@ -1631,6 +1619,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created light manager");
 
+    if (!create_shadow_manager(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created shadow manager");
+
     if (!create_model_color_pipeline(rctx)) {
         return false;
     }
@@ -1642,12 +1636,6 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
     }
 
     LOGM(INFO, "created model_texture pipeline");
-
-    if (!create_shadow_pipeline(rctx)) {
-        return false;
-    }
-
-    LOGM(INFO, "created shadow pipeline");
 
     if (!create_frame_data(rctx)) {
         return false;
@@ -1750,7 +1738,7 @@ void renderer_push_model_texture(struct rcontext *c, vec3 pos, vec3 scale,
 }
 
 void render_draw_cmds(struct rcontext *c, struct frame_data *data,
-                      bool shadow_pass) {
+                      bool shadow_pass, struct shadow_pc *shadow_pc) {
     struct render_queue *q = &c->render_queue;
 
     for (u32 i = 0; i < q->count; i++) {
@@ -1767,18 +1755,17 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
             if (shadow_pass) {
                 vkCmdBindPipeline(data->cmd_buffer,
                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  c->light_manager.shadow_pip.handle);
+                                  c->shadow_manager.shadow_pip.handle);
 
-                struct shadow_pc push_constant = {.model = model};
-
+                shadow_pc->model = model;
                 vkCmdPushConstants(data->cmd_buffer,
-                                   c->light_manager.shadow_pip.layout,
+                                   c->shadow_manager.shadow_pip.layout,
                                    VK_SHADER_STAGE_VERTEX_BIT, 0,
-                                   sizeof(struct shadow_pc), &push_constant);
+                                   sizeof(struct shadow_pc), shadow_pc);
 
                 vkCmdBindDescriptorSets(
                     data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    c->light_manager.shadow_pip.layout, 0, 1,
+                    c->shadow_manager.shadow_pip.layout, 0, 1,
                     &c->descriptors.sets[c->frame_idx], 0, NULL);
             } else {
                 vkCmdBindPipeline(data->cmd_buffer,
@@ -1842,20 +1829,17 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
             if (shadow_pass) {
                 vkCmdBindPipeline(data->cmd_buffer,
                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  c->light_manager.shadow_pip.handle);
+                                  c->shadow_manager.shadow_pip.handle);
 
-                struct shadow_pc push_constant = {
-                    .model = model,
-                };
-
+                shadow_pc->model = model;
                 vkCmdPushConstants(data->cmd_buffer,
-                                   c->light_manager.shadow_pip.layout,
+                                   c->shadow_manager.shadow_pip.layout,
                                    VK_SHADER_STAGE_VERTEX_BIT, 0,
-                                   sizeof(struct shadow_pc), &push_constant);
+                                   sizeof(struct shadow_pc), shadow_pc);
 
                 vkCmdBindDescriptorSets(
                     data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    c->light_manager.shadow_pip.layout, 0, 1,
+                    c->shadow_manager.shadow_pip.layout, 0, 1,
                     &c->descriptors.sets[c->frame_idx], 0, NULL);
             } else {
                 vkCmdBindPipeline(data->cmd_buffer,
@@ -1903,26 +1887,15 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
     }
 }
 
-static bool record_cmd_buffer(struct rcontext *c) {
-    struct frame_data *data = &c->frame_data[c->frame_idx];
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-    };
-
-    if (vkBeginCommandBuffer(data->cmd_buffer, &begin_info) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to begin recording in the command buffer: %d",
-             c->frame_idx);
-        return false;
-    }
-
+static void record_shadow_map(struct rcontext *c, struct frame_data *data,
+                              struct shadow_map *map) {
     VkImageMemoryBarrier shadow_mem_barrier = (VkImageMemoryBarrier){
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = c->light_manager.shadow_map.handle,
+        .image = map->map.handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -1938,7 +1911,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     VkRenderingAttachmentInfo shadow_depth_attachment_info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = c->light_manager.shadow_map.view,
+        .imageView = map->map.view,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1977,7 +1950,11 @@ static bool record_cmd_buffer(struct rcontext *c) {
     vkCmdSetViewport(data->cmd_buffer, 0, 1, &viewport1);
     vkCmdSetScissor(data->cmd_buffer, 0, 1, &scissor1);
 
-    render_draw_cmds(c, data, true);
+    struct shadow_pc push_constant = {
+        .light_space = map->transform,
+    };
+
+    render_draw_cmds(c, data, true, &push_constant);
 
     vkCmdEndRendering(data->cmd_buffer);
 
@@ -1985,7 +1962,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .image = c->light_manager.shadow_map.handle,
+        .image = map->map.handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -2000,6 +1977,28 @@ static bool record_cmd_buffer(struct rcontext *c) {
                          VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                          VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0,
                          NULL, 1, &shadow_mem_barrier);
+}
+
+static bool record_cmd_buffer(struct rcontext *c) {
+    struct frame_data *data = &c->frame_data[c->frame_idx];
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    };
+
+    if (vkBeginCommandBuffer(data->cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to begin recording in the command buffer: %d",
+             c->frame_idx);
+        return false;
+    }
+
+    for (i32 i = 0; i < MAX_DIRECTIONAL_LIGHTS; i++) {
+        if (!c->shadow_manager.directional[i].valid) {
+            continue;
+        }
+
+        record_shadow_map(c, data, &c->shadow_manager.directional[i]);
+    }
 
     VkImageMemoryBarrier mem_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -2095,7 +2094,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     vkCmdBeginRendering(data->cmd_buffer, &render_info);
 
-    render_draw_cmds(c, data, false);
+    render_draw_cmds(c, data, false, NULL);
 
     vkCmdEndRendering(data->cmd_buffer);
 
@@ -2561,6 +2560,72 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
     return true;
 }
 
+static shadow_id create_shadow_map(struct rcontext *c, i32 type) {
+    switch (type) {
+    case LIGHT_TYPE_DIRECTIONAL: {
+        i32 i = 0;
+        for (; i < MAX_DIRECTIONAL_LIGHTS; i++) {
+            if (!c->shadow_manager.directional[i].valid) {
+                break;
+            }
+        }
+
+        create_image(c, &c->shadow_manager.directional[i].map, SHADOW_MAP_SIZE,
+                     SHADOW_MAP_SIZE, VK_FORMAT_D32_SFLOAT,
+                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                         VK_IMAGE_USAGE_SAMPLED_BIT);
+
+        VkDescriptorImageInfo image_info = {
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = c->shadow_manager.directional[i].map.view,
+            .sampler = c->sampler,
+        };
+
+        VkWriteDescriptorSet write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstBinding = GLOBAL_DESC_SHADOW_BINDING,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .pImageInfo = &image_info,
+        };
+
+        for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+            write.dstSet = c->descriptors.sets[i];
+            vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+        }
+
+        c->shadow_manager.directional[i].valid = true;
+
+        // light_space
+        vec3 light_pos = (vec3){0, 10, 10};
+        vec3 target = (vec3){0, 0, 0}; // TODO: change to actual target
+        vec3 up = (vec3){0, 1, 0};
+
+        matrix light_view = math_matrix_look_at(light_pos, target, up);
+        matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
+        ortho.m[10] *= -1.0f;
+        ortho.m[14] *= -1.0f;
+
+        c->shadow_manager.directional[i].transform =
+            math_matrix_mul(ortho, light_view);
+
+        return i;
+    }
+
+        // TODO: implement other types
+    }
+}
+
+static void destroy_shadow_map(struct rcontext *c, shadow_id id, i32 type) {
+    switch (type) {
+    case LIGHT_TYPE_DIRECTIONAL: {
+        destroy_image(c, &c->shadow_manager.directional[id].map);
+        c->shadow_manager.directional[id].valid = false;
+    } break;
+        // TODO: implement other types
+    }
+}
+
 static light_id create_light_id(i32 type, i32 index) {
     switch (type) {
     case LIGHT_TYPE_DIRECTIONAL:
@@ -2594,6 +2659,8 @@ light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
         LOGM(WARN, "reached maximum number of directional lights");
         return NO_LIGHT;
     }
+
+    res.shadow = create_shadow_map(c, LIGHT_TYPE_DIRECTIONAL);
 
     c->light_manager.directional[i] = res;
 
@@ -2635,6 +2702,8 @@ light_id renderer_create_point_light(struct rcontext *c, vec3 pos, vec3 color,
         return NO_LIGHT;
     }
 
+    res.shadow = create_shadow_map(c, LIGHT_TYPE_POINT);
+
     c->light_manager.point[i] = res;
 
     return create_light_id(LIGHT_TYPE_POINT, i);
@@ -2669,6 +2738,8 @@ light_id renderer_create_spot_light(struct rcontext *c, vec3 pos,
         LOGM(WARN, "reached maximum number of spot lights");
         return NO_LIGHT;
     }
+
+    res.shadow = create_shadow_map(c, LIGHT_TYPE_SPOT);
 
     c->light_manager.spot[i] = res;
 
@@ -2874,21 +2945,6 @@ bool renderer_update(struct rcontext *c, f32 dt) {
         (vec3){0.0f, 1.0f, 0.0f});
     c->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
 
-    // light_space
-    vec3 light_pos = (vec3){0, 10, 10};
-    vec3 target = (vec3){0, 0, 0};
-    vec3 up = (vec3){0, 1, 0};
-
-    matrix light_view = math_matrix_look_at(light_pos, target, up);
-    matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
-    ortho.m[10] *= -1.0f;
-    ortho.m[14] *= -1.0f;
-
-    c->matrix_ubo.data.light_space = math_matrix_mul(ortho, light_view);
-    // update matrix ubo
-    memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
-           &c->matrix_ubo.data, sizeof(struct matrix_ubo_data));
-
     return true;
 }
 
@@ -2917,7 +2973,6 @@ void renderer_deint(struct rcontext *rctx) {
 
     destroy_pipeline(rctx, &rctx->model_color_pip);
     destroy_pipeline(rctx, &rctx->model_texture_pip);
-    destroy_pipeline(rctx, &rctx->light_manager.shadow_pip);
 
     destroy_texture_manager(rctx);
     destroy_light_manager(rctx);

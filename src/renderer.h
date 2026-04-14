@@ -109,6 +109,7 @@ struct texture_manager {
 struct dir_light {
     vec3 direction;
     vec3 color;
+    shadow_id shadow;
     bool valid;
 };
 
@@ -120,6 +121,8 @@ struct point_light {
     f32 constant;
     f32 linear;
     f32 quadratic;
+
+    shadow_id shadow;
     bool valid;
 };
 
@@ -135,6 +138,8 @@ struct spot_light {
     f32 constant;
     f32 linear;
     f32 quadratic;
+
+    shadow_id shadow;
     bool valid;
 };
 
@@ -201,7 +206,8 @@ struct shadow_cube_map {
 
 struct shadow_manager {
     struct shadow_map directional[MAX_DIRECTIONAL_LIGHTS];
-    struct shadow_cube_map point[MAX_POINT_LIGHTS];
+    struct shadow_cube_map
+        point[MAX_POINT_LIGHTS]; // TODO: point lights in a sec xD
     struct shadow_map spot[MAX_SPOT_LIGHTS];
 
     struct pipeline shadow_pip;
@@ -305,6 +311,7 @@ struct rcontext {
     struct global_desc descriptors;
     struct texture_manager texture_manager;
     struct light_manager light_manager;
+    struct shadow_manager shadow_manager;
 
     struct matrix_ubo matrix_ubo;
 
