@@ -2623,6 +2623,8 @@ static shadow_id create_shadow_map(struct rcontext *c, i32 type) {
         ortho.m[10] *= -1.0f;
         ortho.m[14] *= -1.0f;
 
+        LOGM(API_DUMP, "Shadow Index: %d", i);
+
         c->shadow_manager.directional[i].transform =
             math_matrix_mul(ortho, light_view);
 
@@ -2631,6 +2633,8 @@ static shadow_id create_shadow_map(struct rcontext *c, i32 type) {
 
         // TODO: implement other types
     }
+
+    return NO_SHADOW;
 }
 
 static void destroy_shadow_map(struct rcontext *c, shadow_id id, i32 type) {

@@ -18,6 +18,7 @@
 #define NO_MODEL -1
 #define NO_TEXTURE -1
 #define NO_LIGHT -1
+#define NO_SHADOW -1
 
 // total max of different textures to exist
 #define MAX_TEXTURES 1024
