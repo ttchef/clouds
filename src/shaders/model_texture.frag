@@ -27,6 +27,8 @@ layout (set = 0, binding = GLOBAL_DESC_LIGHT_BINDING) uniform lights {
 } u_lights;
 
 layout (set = 0, binding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING) uniform sampler2D u_shadow_directional[];
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_POINT_BINDING) uniform sampler2D u_shadow_point[];
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_SPOT_BINDING) uniform sampler2D u_shadow_spot[];
 
 layout (push_constant) uniform Push {
     mat4 model;
@@ -59,8 +61,13 @@ void main() {
 
     // gamma correction
     light_out = pow(light_out, vec3(1.0 / gamma));
-        
-    out_color = vec4(light_out, tex_sample.w);
+
+            vec3 projCoords = in_light_space_pos.xyz / in_light_space_pos.w;
+    projCoords.xy = projCoords.xy * 0.5 + 0.5;
+
+    out_color = texture(u_shadow_directional[0] ,projCoords.xy); 
+
+    // out_color = vec4(light_out, tex_sample.w);
 }
 
 
