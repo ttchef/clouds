@@ -11,13 +11,13 @@ layout (location = 2) in vec3 in_normal;
 
 layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
     mat4 proj_view;
-    mat4 light_space;
 } u_matrix;
 
 layout (push_constant) uniform Push {
     mat4 model;
+    mat4 light_space;
 } pc;
 
 void main() {
-    gl_Position = u_matrix.light_space * pc.model * vec4(in_pos, 1.0);
+    gl_Position = pc.light_space * pc.model * vec4(in_pos, 1.0);
 }

@@ -1362,7 +1362,9 @@ static bool create_global_desc(struct rcontext *c) {
         {
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             MAX_TEXTURES * FRAMES_IN_FLIGHT +
-                FRAMES_IN_FLIGHT, // TODO: change with shadow map
+                // shadow maps
+                (MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS) *
+                    FRAMES_IN_FLIGHT,
         },
         {
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1388,19 +1390,33 @@ static bool create_global_desc(struct rcontext *c) {
     VkDescriptorSetLayoutBinding bindings[] = {
         {GLOBAL_DESC_TEXTURE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
          MAX_TEXTURES, VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
         {GLOBAL_DESC_LIGHT_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
         {GLOBAL_DESC_MATRIX_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
          VK_SHADER_STAGE_VERTEX_BIT, 0},
-        {GLOBAL_DESC_SHADOW_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-         1, VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
+        {GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
+        {GLOBAL_DESC_SHADOW_POINT_BINDING,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
+        {GLOBAL_DESC_SHADOW_SPOT_BINDING,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
     };
 
     VkDescriptorBindingFlags binding_flags[] = {
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         0,
         0,
-        0,
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
     };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
@@ -2583,8 +2599,9 @@ static shadow_id create_shadow_map(struct rcontext *c, i32 type) {
 
         VkWriteDescriptorSet write = {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstBinding = GLOBAL_DESC_SHADOW_BINDING,
+            .dstBinding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING,
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .dstArrayElement = i,
             .descriptorCount = 1,
             .pImageInfo = &image_info,
         };
@@ -2758,11 +2775,17 @@ void renderer_destroy_light(struct rcontext *c, light_id id) {
         id -= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS;
 
         c->light_manager.spot[id].valid = false;
+        destroy_shadow_map(c, c->light_manager.spot[id].shadow,
+                           LIGHT_TYPE_SPOT);
     } else if (id >= MAX_DIRECTIONAL_LIGHTS) {
         id -= MAX_DIRECTIONAL_LIGHTS;
 
         c->light_manager.point[id].valid = false;
+        destroy_shadow_map(c, c->light_manager.point[id].shadow,
+                           LIGHT_TYPE_POINT);
     } else {
+        destroy_shadow_map(c, c->light_manager.directional[id].shadow,
+                           LIGHT_TYPE_DIRECTIONAL);
         c->light_manager.directional[id].valid = false;
     }
 }
@@ -2945,6 +2968,9 @@ bool renderer_update(struct rcontext *c, f32 dt) {
         (vec3){0.0f, 1.0f, 0.0f});
     c->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
 
+    memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
+           &c->matrix_ubo.data, sizeof(struct matrix_ubo_data));
+
     return true;
 }
 
@@ -2974,8 +3000,9 @@ void renderer_deint(struct rcontext *rctx) {
     destroy_pipeline(rctx, &rctx->model_color_pip);
     destroy_pipeline(rctx, &rctx->model_texture_pip);
 
-    destroy_texture_manager(rctx);
+    destroy_shadow_manager(rctx);
     destroy_light_manager(rctx);
+    destroy_texture_manager(rctx);
     destroy_global_desc(rctx);
 
     if (rctx->finished) {

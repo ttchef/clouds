@@ -26,7 +26,7 @@ layout (set = 0, binding = GLOBAL_DESC_LIGHT_BINDING) uniform lights {
     uint padding;
 } u_lights;
 
-layout (set = 0, binding = GLOBAL_DESC_SHADOW_BINDING) uniform sampler2D u_shadow;
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING) uniform sampler2D u_shadow_directional[];
 
 layout (push_constant) uniform Push {
     mat4 model;
@@ -46,7 +46,7 @@ void main() {
     vec3 color = pow(tex_sample.xyz, vec3(gamma));
 
     for (int i = 0; i < u_lights.directional_count; i++) {
-        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, color, u_shadow, in_light_space_pos);
+        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, color, u_shadow_directional[0], in_light_space_pos);
     }
 
     for (int i = 0; i < u_lights.point_count; i++) {
