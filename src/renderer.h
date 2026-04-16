@@ -216,9 +216,6 @@ struct shadow_manager {
 
 struct matrix_ubo_data {
     matrix proj_view;
-
-    // at the moment the transform matrix for directional[0] light
-    matrix light_space;
 };
 
 struct matrix_ubo {

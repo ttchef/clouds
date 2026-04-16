@@ -2606,8 +2606,8 @@ static shadow_id create_shadow_map(struct rcontext *c, i32 type) {
             .pImageInfo = &image_info,
         };
 
-        for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
-            write.dstSet = c->descriptors.sets[i];
+        for (i32 j = 0; j < FRAMES_IN_FLIGHT; j++) {
+            write.dstSet = c->descriptors.sets[j];
             vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
         }
 

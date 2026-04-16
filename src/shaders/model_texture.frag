@@ -65,7 +65,7 @@ void main() {
             vec3 projCoords = in_light_space_pos.xyz / in_light_space_pos.w;
     projCoords.xy = projCoords.xy * 0.5 + 0.5;
 
-    out_color = texture(u_shadow_directional[nonuniformEXT(0)] ,projCoords.xy); 
+    out_color = vec4(texture(u_shadow_directional[nonuniformEXT(0)] ,projCoords.xy).xxx, 1.0); 
 
     // out_color = vec4(light_out, tex_sample.w);
 }
