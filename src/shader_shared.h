@@ -18,4 +18,7 @@
 #define MAX_POINT_LIGHTS 128
 #define MAX_SPOT_LIGHTS 128
 
+// total max of different textures to exist
+#define MAX_TEXTURES 1024
+
 #endif // SHADER_SAHRED_H

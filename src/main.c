@@ -78,18 +78,9 @@ i32 main(void) {
 
     renderer_set_model_texture(&c->rctx, torus, brick);
 
-    // light_id point = renderer_create_point_light(&c->rctx, (vec3){0, 1.5, 0},
-    //                                         (vec3){0.7, 0.2, 0.6}, 150.0f);
-
     light_id spot =
         renderer_create_spot_light(&c->rctx, (vec3){0, 1, 0}, (vec3){0, 0, -1},
                                    (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
-
-    // light_id static_spot =
-    //     renderer_create_spot_light(&c->rctx,
-    //     (vec3){0, 0, 0},
-    //     (vec3){0, 0, -1},
-    //                             (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
 
     light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
                                              (vec3){1.0, 0.0, 0.0});

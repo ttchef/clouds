@@ -11,7 +11,7 @@ layout (location = 0) in vec2 in_uv;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec3 in_world_pos;
 
-layout (set = 0, binding = GLOBAL_DESC_TEXTURE_BINDING) uniform sampler2D in_textures[];
+layout (set = 0, binding = GLOBAL_DESC_TEXTURE_BINDING) uniform sampler2D in_textures[MAX_TEXTURES];
 
 layout (set = 0, binding = GLOBAL_DESC_LIGHT_BINDING) uniform lights {
     DirLight directional[MAX_DIRECTIONAL_LIGHTS];
@@ -25,9 +25,9 @@ layout (set = 0, binding = GLOBAL_DESC_LIGHT_BINDING) uniform lights {
     uint padding;
 } u_lights;
 
-layout (set = 0, binding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING) uniform sampler2D u_shadow_directional[];
-layout (set = 0, binding = GLOBAL_DESC_SHADOW_POINT_BINDING) uniform sampler2D u_shadow_point[];
-layout (set = 0, binding = GLOBAL_DESC_SHADOW_SPOT_BINDING) uniform sampler2D u_shadow_spot[];
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING) uniform sampler2D u_shadow_directional[MAX_DIRECTIONAL_LIGHTS];
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_POINT_BINDING) uniform sampler2D u_shadow_point[MAX_POINT_LIGHTS];
+layout (set = 0, binding = GLOBAL_DESC_SHADOW_SPOT_BINDING) uniform sampler2D u_shadow_spot[MAX_SPOT_LIGHTS];
 
 layout (push_constant) uniform Push {
     mat4 model;
@@ -56,7 +56,8 @@ void main() {
     }
 
     for (int i = 0; i < u_lights.spot_count; i++) {
-        light_out += calc_spot_light(u_lights.spot[i], normal, in_world_pos, view_dir, color);
+        SpotLight light = u_lights.spot[i];
+        light_out += calc_spot_light(light, normal, in_world_pos, view_dir, color, u_shadow_spot[nonuniformEXT(light.shadow_index)]);
     }
 
     // gamma correction

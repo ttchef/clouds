@@ -18,10 +18,6 @@
 #define NO_MODEL -1
 #define NO_TEXTURE -1
 #define NO_LIGHT -1
-#define NO_SHADOW -1
-
-// total max of different textures to exist
-#define MAX_TEXTURES 1024
 
 struct api_version {
     u32 major;
@@ -217,8 +213,10 @@ struct light_manager {
     struct point_light point[MAX_POINT_LIGHTS];
     struct spot_light spot[MAX_SPOT_LIGHTS];
 
+    u32 directional_counter;
+    u32 spot_counter;
+
     struct pipeline shadow_pip;
-    u32 shadow_counter;
 
     struct light_buffer light_buffer;
 };

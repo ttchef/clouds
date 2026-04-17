@@ -1398,15 +1398,15 @@ static bool create_global_desc(struct rcontext *c) {
          VK_SHADER_STAGE_VERTEX_BIT, 0},
 
         {GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING,
-         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_DIRECTIONAL_LIGHTS,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
 
         {GLOBAL_DESC_SHADOW_POINT_BINDING,
-         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_POINT_LIGHTS,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
 
         {GLOBAL_DESC_SHADOW_SPOT_BINDING,
-         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_SPOT_LIGHTS,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
     };
 
@@ -1891,14 +1891,14 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
 }
 
 static void record_shadow_map(struct rcontext *c, struct frame_data *data,
-                              struct dir_light *light) {
+                              struct image *map, matrix transform) {
     VkImageMemoryBarrier shadow_mem_barrier = (VkImageMemoryBarrier){
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = light->map.handle,
+        .image = map->handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -1914,7 +1914,7 @@ static void record_shadow_map(struct rcontext *c, struct frame_data *data,
 
     VkRenderingAttachmentInfo shadow_depth_attachment_info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-        .imageView = light->map.view,
+        .imageView = map->view,
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1954,7 +1954,7 @@ static void record_shadow_map(struct rcontext *c, struct frame_data *data,
     vkCmdSetScissor(data->cmd_buffer, 0, 1, &scissor1);
 
     struct shadow_pc push_constant = {
-        .light_space = light->transform,
+        .light_space = transform,
     };
 
     render_draw_cmds(c, data, true, &push_constant);
@@ -1965,7 +1965,7 @@ static void record_shadow_map(struct rcontext *c, struct frame_data *data,
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .image = light->map.handle,
+        .image = map->handle,
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -2000,7 +2000,17 @@ static bool record_cmd_buffer(struct rcontext *c) {
             continue;
         }
 
-        record_shadow_map(c, data, &c->light_manager.directional[i]);
+        struct dir_light *l = &c->light_manager.directional[i];
+        record_shadow_map(c, data, &l->map, l->transform);
+    }
+
+    for (i32 i = 0; i < MAX_SPOT_LIGHTS; i++) {
+        if (!c->light_manager.spot[i].valid) {
+            continue;
+        }
+
+        struct spot_light *l = &c->light_manager.spot[i];
+        record_shadow_map(c, data, &l->map, l->transform);
     }
 
     VkImageMemoryBarrier mem_barrier = {
@@ -2564,7 +2574,8 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
 }
 
 // only for directional lights right now
-static u32 create_shadow_map(struct rcontext *c, struct image *image) {
+static u32 create_shadow_map(struct rcontext *c, struct image *image,
+                             u32 binding, u32 *counter) {
     create_image(c, image, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE,
                  VK_FORMAT_D32_SFLOAT,
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
@@ -2576,18 +2587,18 @@ static u32 create_shadow_map(struct rcontext *c, struct image *image) {
         .sampler = c->sampler,
     };
 
-    u32 index = c->light_manager.shadow_counter;
+    u32 index = *counter;
 
     VkWriteDescriptorSet write = {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstBinding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING,
+        .dstBinding = binding,
         .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .dstArrayElement = index,
         .descriptorCount = 1,
         .pImageInfo = &image_info,
     };
 
-    c->light_manager.shadow_counter++;
+    (*counter)++;
 
     for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         write.dstSet = c->descriptors.sets[i];
@@ -2643,8 +2654,9 @@ light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
 
     res.transform = math_matrix_mul(ortho, light_view);
 
-    c->light_manager.directional[i].shadow_index =
-        create_shadow_map(c, &res.map);
+    res.shadow_index =
+        create_shadow_map(c, &res.map, GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING,
+                          &c->light_manager.directional_counter);
 
     c->light_manager.directional[i] = res;
 
@@ -2720,6 +2732,23 @@ light_id renderer_create_spot_light(struct rcontext *c, vec3 pos,
         LOGM(WARN, "reached maximum number of spot lights");
         return NO_LIGHT;
     }
+
+    // light_space
+    vec3 light_pos = res.pos;
+    vec3 target = math_vec3_add(res.pos, res.direction);
+    vec3 up = (vec3){0, 1, 0};
+
+    matrix light_view = math_matrix_look_at(light_pos, target, up);
+    matrix proj =
+        math_matrix_perspective(outer_cutt_off * 2.0f, 1.0f, 0.1f, distance);
+    proj.m[10] *= -1.0f;
+    proj.m[14] *= -1.0f;
+
+    res.transform = math_matrix_mul(proj, light_view);
+
+    res.shadow_index =
+        create_shadow_map(c, &res.map, GLOBAL_DESC_SHADOW_SPOT_BINDING,
+                          &c->light_manager.spot_counter);
 
     c->light_manager.spot[i] = res;
 
@@ -2816,15 +2845,30 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
 
     id -= MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS;
 
-    c->light_manager.spot[id].pos = pos;
-    c->light_manager.spot[id].direction = direction;
-    c->light_manager.spot[id].color = color;
-    c->light_manager.spot[id].cutt_off = cos(DEG2RAD(cutt_of));
-    c->light_manager.spot[id].outer_cutt_off = cos(DEG2RAD(outer_cutt_of));
+    struct spot_light *l = &c->light_manager.spot[id];
 
-    c->light_manager.spot[id].constant = kc;
-    c->light_manager.spot[id].linear = kl;
-    c->light_manager.spot[id].quadratic = kq;
+    l->pos = pos;
+    l->direction = direction;
+    l->color = color;
+    l->cutt_off = cos(DEG2RAD(cutt_of));
+    l->outer_cutt_off = cos(DEG2RAD(outer_cutt_of));
+
+    l->constant = kc;
+    l->linear = kl;
+    l->quadratic = kq;
+
+    // light_space
+    vec3 light_pos = l->pos;
+    vec3 target = math_vec3_add(l->pos, l->direction);
+    vec3 up = (vec3){0, 1, 0};
+
+    matrix light_view = math_matrix_look_at(light_pos, target, up);
+    matrix proj =
+        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
+    proj.m[10] *= -1.0f;
+    proj.m[14] *= -1.0f;
+
+    l->transform = math_matrix_mul(proj, light_view);
 }
 
 static bool update_lights(struct rcontext *c) {
