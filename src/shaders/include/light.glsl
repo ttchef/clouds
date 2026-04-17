@@ -7,6 +7,12 @@
 struct DirLight {
     vec4 direction;
     vec4 color;
+
+    uint shadow_index;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    
     mat4 transform;
 };
 
@@ -16,6 +22,12 @@ struct PointLight {
 
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+    
+    uint shadow_index;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    
     mat4 transform;
 };
 
@@ -28,6 +40,12 @@ struct SpotLight {
     vec4 cut_offs;
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    uint shadow_index;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    
     mat4 transform;
 };
 

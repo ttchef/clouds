@@ -10,7 +10,6 @@
 layout (location = 0) in vec2 in_uv;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec3 in_world_pos;
-layout (location = 3) in vec4 in_light_space_pos;
 
 // has access to them but doesnt use rn
 layout (set = 0, binding = GLOBAL_DESC_TEXTURE_BINDING) uniform sampler2D in_textures[];
@@ -62,9 +61,9 @@ void main() {
     // gamma correction
     light_out = pow(light_out, vec3(1.0 / gamma));
     
-    vec3 projCoords = in_light_space_pos.xyz / in_light_space_pos.w;
-    projCoords.xy = projCoords.xy * 0.5 + 0.5;
+    // vec3 projCoords = in_light_space_pos.xyz / in_light_space_pos.w;
+    // projCoords.xy = projCoords.xy * 0.5 + 0.5;
 
-    out_color = texture(u_shadow_directional[0] ,projCoords.xy); 
-    // out_color = vec4(light_out, pc.color.w);
+    // out_color = texture(u_shadow_directional[0] ,projCoords.xy); 
+    out_color = vec4(light_out, pc.color.w);
 }

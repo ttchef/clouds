@@ -23,7 +23,6 @@ layout (push_constant) uniform Push {
 layout (location = 0) out vec2 out_uv;
 layout (location = 1) out vec3 out_normal;
 layout (location = 2) out vec3 out_world_pos;
-layout (location = 3) out vec4 out_light_space_pos;
 
 void main() {
     gl_Position = u_matrix.proj_view * pc.model * vec4(in_pos, 1.0);
@@ -34,6 +33,4 @@ void main() {
     
     vec4 pos = pc.model * vec4(in_pos, 1.0);
     out_world_pos = pos.xyz;
-
-    out_light_space_pos = u_matrix.light_space * pc.model * vec4(in_pos, 1.0);
 }

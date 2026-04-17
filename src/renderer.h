@@ -95,7 +95,6 @@ struct global_desc {
 typedef i32 texture_id;
 typedef i32 model_id;
 typedef i32 light_id;
-typedef i32 shadow_id;
 
 struct texture {
     struct image image;
@@ -110,7 +109,10 @@ struct texture_manager {
 struct dir_light {
     vec3 direction;
     vec3 color;
-    shadow_id shadow;
+
+    matrix transform;
+    u32 shadow_index;
+    struct image map;
     bool valid;
 };
 
@@ -123,7 +125,9 @@ struct point_light {
     f32 linear;
     f32 quadratic;
 
-    shadow_id shadow;
+    matrix transform;
+    u32 shadow_index;
+    struct image map;
     bool valid;
 };
 
@@ -140,7 +144,9 @@ struct spot_light {
     f32 linear;
     f32 quadratic;
 
-    shadow_id shadow;
+    matrix transform;
+    u32 shadow_index;
+    struct image map;
     bool valid;
 };
 
@@ -149,6 +155,12 @@ struct spot_light {
 struct __attribute__((aligned(16))) gpu_dir_light {
     vec4 direction;
     vec4 color;
+
+    u32 shadow_index;
+    u32 pad0;
+    u32 pad1;
+    u32 pad2;
+
     matrix transform;
 };
 
@@ -158,6 +170,12 @@ struct __attribute__((aligned(16))) gpu_point_light {
 
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    u32 shadow_index;
+    u32 pad0;
+    u32 pad1;
+    u32 pad2;
+
     matrix transform;
 };
 
@@ -170,6 +188,11 @@ struct __attribute__((aligned(16))) gpu_spot_light {
     vec4 cut_offs;
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    u32 shadow_index;
+    u32 pad0;
+    u32 pad1;
+    u32 pad2;
 
     matrix transform;
 };
@@ -194,28 +217,10 @@ struct light_manager {
     struct point_light point[MAX_POINT_LIGHTS];
     struct spot_light spot[MAX_SPOT_LIGHTS];
 
-    struct light_buffer light_buffer;
-};
-
-struct shadow_map {
-    struct image map;
-    matrix transform;
-    bool valid;
-};
-
-struct shadow_cube_map {
-    struct image map;
-    matrix transform[6];
-    bool valid;
-};
-
-struct shadow_manager {
-    struct shadow_map directional[MAX_DIRECTIONAL_LIGHTS];
-    struct shadow_cube_map
-        point[MAX_POINT_LIGHTS]; // TODO: point lights in a sec xD
-    struct shadow_map spot[MAX_SPOT_LIGHTS];
-
     struct pipeline shadow_pip;
+    u32 shadow_counter;
+
+    struct light_buffer light_buffer;
 };
 
 struct matrix_ubo_data {
@@ -313,7 +318,6 @@ struct rcontext {
     struct global_desc descriptors;
     struct texture_manager texture_manager;
     struct light_manager light_manager;
-    struct shadow_manager shadow_manager;
 
     struct matrix_ubo matrix_ubo;
 
