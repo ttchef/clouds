@@ -2739,10 +2739,8 @@ light_id renderer_create_spot_light(struct rcontext *c, vec3 pos,
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
-    matrix proj =
-        math_matrix_perspective(outer_cutt_off * 2.0f, 1.0f, 0.1f, distance);
-    proj.m[10] *= -1.0f;
-    proj.m[14] *= -1.0f;
+    matrix proj = math_matrix_perspective_no_flip(outer_cutt_off * 2.0f, 1.0f,
+                                                  0.1f, distance);
 
     res.transform = math_matrix_mul(proj, light_view);
 
@@ -2863,10 +2861,8 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
-    matrix proj =
-        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
-    proj.m[10] *= -1.0f;
-    proj.m[14] *= -1.0f;
+    matrix proj = math_matrix_perspective_no_flip(outer_cutt_of * 2.0f, 1.0f,
+                                                  0.1f, distance);
 
     l->transform = math_matrix_mul(proj, light_view);
 }
@@ -2947,6 +2943,8 @@ static bool update_lights(struct rcontext *c) {
                     light->quadratic,
                     0.0f,
                 },
+            .shadow_index = light->shadow_index,
+            .transform = light->transform,
         };
 
         c->light_manager.light_buffer
