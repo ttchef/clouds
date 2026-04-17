@@ -149,6 +149,7 @@ struct spot_light {
 struct __attribute__((aligned(16))) gpu_dir_light {
     vec4 direction;
     vec4 color;
+    matrix transform;
 };
 
 struct __attribute__((aligned(16))) gpu_point_light {
@@ -157,6 +158,7 @@ struct __attribute__((aligned(16))) gpu_point_light {
 
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+    matrix transform;
 };
 
 struct __attribute__((aligned(16))) gpu_spot_light {
@@ -168,6 +170,8 @@ struct __attribute__((aligned(16))) gpu_spot_light {
     vec4 cut_offs;
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    matrix transform;
 };
 
 // watch out for alignement

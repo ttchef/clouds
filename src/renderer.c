@@ -43,7 +43,6 @@ struct model_texture_pc {
 
 struct shadow_pc {
     matrix model;
-    matrix light_space;
 };
 
 // TODO: move out of the renderer
@@ -2613,21 +2612,6 @@ static shadow_id create_shadow_map(struct rcontext *c, i32 type) {
 
         c->shadow_manager.directional[i].valid = true;
 
-        // light_space
-        vec3 light_pos = (vec3){0, 10, 10};
-        vec3 target = (vec3){0, 0, 0}; // TODO: change to actual target
-        vec3 up = (vec3){0, 1, 0};
-
-        matrix light_view = math_matrix_look_at(light_pos, target, up);
-        matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
-        ortho.m[10] *= -1.0f;
-        ortho.m[14] *= -1.0f;
-
-        LOGM(API_DUMP, "Shadow Index: %d", i);
-
-        c->shadow_manager.directional[i].transform =
-            math_matrix_mul(ortho, light_view);
-
         return i;
     }
 
@@ -2886,9 +2870,20 @@ static bool update_lights(struct rcontext *c) {
 
         struct dir_light *light = &c->light_manager.directional[i];
 
+        // light_space
+        vec3 light_pos = (vec3){0, 10, 10};
+        vec3 target = (vec3){0, 0, 0}; // TODO: change to actual target
+        vec3 up = (vec3){0, 1, 0};
+
+        matrix light_view = math_matrix_look_at(light_pos, target, up);
+        matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
+        ortho.m[10] *= -1.0f;
+        ortho.m[14] *= -1.0f;
+
         struct gpu_dir_light gpu_dir_light = {
             .direction = math_vec4_from_vec3(light->direction, 0.0f),
             .color = math_vec4_from_vec3(light->color, 1.0f),
+            .transform = math_matrix_mul(ortho, light_view),
         };
 
         c->light_manager.light_buffer

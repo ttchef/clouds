@@ -6,7 +6,8 @@
 
 struct DirLight {
     vec4 direction;
-    vec4 color;  
+    vec4 color;
+    mat4 transform;
 };
 
 struct PointLight {
@@ -15,6 +16,7 @@ struct PointLight {
 
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+    mat4 transform;
 };
 
 struct SpotLight {  
@@ -26,11 +28,13 @@ struct SpotLight {
     vec4 cut_offs;
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+    mat4 transform;
 };
 
 const float ambient_coeff = 0.03;
 
-vec3 calc_dir_light(DirLight light, vec3 normal, vec3 view_dir, vec3 surface_color, sampler2D shadow_map, vec4 light_space_pos) {
+vec3 calc_dir_light(DirLight light, vec3 normal, vec3 frag_pos, vec3 view_dir, vec3 surface_color, sampler2D shadow_map) {
+    vec4 light_space_pos = light.transform * vec4(frag_pos, 1.0);
     vec3 light_dir = normalize(-light.direction.xyz);
 
     float diff = max(dot(normal, light_dir), 0.0);

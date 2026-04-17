@@ -48,7 +48,7 @@ void main() {
     vec3 color = pow(tex_sample.xyz, vec3(gamma));
 
     for (int i = 0; i < u_lights.directional_count; i++) {
-        light_out += calc_dir_light(u_lights.directional[i], normal, view_dir, color, u_shadow_directional[nonuniformEXT(0)], in_light_space_pos);
+        light_out += calc_dir_light(u_lights.directional[i], normal, in_world_pos, view_dir, color, u_shadow_directional[nonuniformEXT(0)]);
     }
 
     for (int i = 0; i < u_lights.point_count; i++) {
