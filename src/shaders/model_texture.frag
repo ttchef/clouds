@@ -47,7 +47,8 @@ void main() {
     vec3 color = pow(tex_sample.xyz, vec3(gamma));
 
     for (int i = 0; i < u_lights.directional_count; i++) {
-        light_out += calc_dir_light(u_lights.directional[i], normal, in_world_pos, view_dir, color, u_shadow_directional[nonuniformEXT(0)]);
+        DirLight light = u_lights.directional[i];
+        light_out += calc_dir_light(light, normal, in_world_pos, view_dir, color, u_shadow_directional[nonuniformEXT(light.shadow_index)]);
     }
 
     for (int i = 0; i < u_lights.point_count; i++) {
@@ -60,12 +61,7 @@ void main() {
 
     // gamma correction
     light_out = pow(light_out, vec3(1.0 / gamma));
-
-            // vec3 projCoords = in_light_space_pos.xyz / in_light_space_pos.w;
-    // projCoords.xy = projCoords.xy * 0.5 + 0.5;
-
-    // out_color = vec4(texture(u_shadow_directional[nonuniformEXT(0)] ,projCoords.xy).xxx, 1.0); 
-
+    
     out_color = vec4(light_out, tex_sample.w);
 }
 
