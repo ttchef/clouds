@@ -317,6 +317,102 @@ static bool create_image(struct rcontext *c, struct image *image, u32 width,
     return true;
 }
 
+static bool transition_image(struct rcontext *c, struct image *image,
+                             VkImageLayout old_layout, VkImageLayout new_layout,
+                             VkAccessFlags src_access, VkAccessFlags dst_access,
+                             VkPipelineStageFlags src_stage,
+                             VkPipelineStageFlags dst_stage,
+                             VkImageAspectFlags aspect_mask) {
+    VkCommandPool cmd_pool;
+    VkCommandBuffer cmd_buffer;
+
+    VkCommandPoolCreateInfo pool_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = c->graphics_queue.index,
+    };
+
+    if (vkCreateCommandPool(c->dev, &pool_info, NULL, &cmd_pool) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command pool");
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+        .commandPool = cmd_pool,
+    };
+
+    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command buffer");
+        goto error_path;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to begin recording into command buffer");
+        goto error_path;
+    }
+
+    VkImageMemoryBarrier image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = old_layout,
+        .newLayout = new_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image->handle,
+        .subresourceRange =
+            {
+                .aspectMask = aspect_mask,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .srcAccessMask = src_access,
+        .dstAccessMask = dst_access,
+    };
+
+    vkCmdPipelineBarrier(cmd_buffer, src_stage, dst_stage, 0, 0, 0, 0, 0, 1,
+                         &image_barrier);
+
+    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
+        LOGM(ERROR, "failed recording into command buffer");
+        goto error_path;
+    }
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd_buffer,
+    };
+
+    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit queue");
+        goto error_path;
+    }
+
+    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
+        LOGM(ERROR, "Failed to wait for queue");
+        goto error_path;
+    }
+
+    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+
+    return true;
+
+error_path:
+
+    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+    return false;
+}
+
 static void destroy_image(struct rcontext *c, struct image *image) {
     vkDestroyImageView(c->dev, image->view, NULL);
     vmaDestroyImage(c->allocator, image->handle, image->alloc);
@@ -1137,6 +1233,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
     if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
         VK_SUCCESS) {
         LOGM(ERROR, "failed to create command buffer");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
         return false;
     }
 
@@ -1147,6 +1244,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
 
     if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
         LOGM(ERROR, "failed to begin recording into command buffer");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
         return false;
     }
 
@@ -1204,6 +1302,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
     if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
         LOGM(ERROR, "failed recording into command buffer");
         vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
         return false;
     }
 
@@ -1217,12 +1316,14 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
         VK_SUCCESS) {
         LOGM(ERROR, "failed to submit queue");
         vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
         return false;
     }
 
     if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
         LOGM(ERROR, "Failed to wait for queue");
         vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
         return false;
     }
 
@@ -1894,7 +1995,7 @@ static void record_shadow_map(struct rcontext *c, struct frame_data *data,
                               struct image *map, matrix transform) {
     VkImageMemoryBarrier shadow_mem_barrier = (VkImageMemoryBarrier){
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -2605,6 +2706,12 @@ static u32 create_shadow_map(struct rcontext *c, struct image *image,
         vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
     }
 
+    transition_image(
+        c, image, VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, VK_ACCESS_SHADER_READ_BIT,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_IMAGE_ASPECT_DEPTH_BIT);
+
     return index;
 }
 
@@ -2861,8 +2968,8 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
-    matrix proj = math_matrix_perspective_no_flip(outer_cutt_of * 2.0f, 1.0f,
-                                                  0.1f, distance);
+    matrix proj =
+        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
 
     l->transform = math_matrix_mul(proj, light_view);
 }
