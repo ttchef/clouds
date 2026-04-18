@@ -249,7 +249,7 @@ matrix math_matrix_perspective_no_flip(f32 fov_deg, f32 aspect, f32 near,
     m.m[0] = f / aspect;
     m.m[5] = f;
     m.m[10] = far / (far - near);
-    m.m[11] = 1.0f;
+    m.m[11] = -1.0f;
     m.m[14] = -(far * near) / (far - near);
     return m;
 }

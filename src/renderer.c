@@ -2964,12 +2964,31 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
 
     // light_space
     vec3 light_pos = l->pos;
-    vec3 target = math_vec3_add(l->pos, l->direction);
+    vec3 target = math_vec3_add(l->pos, math_vec3_norm(l->direction));
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
-    matrix proj =
-        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
+
+    float fov_rad = outer_cutt_of * 2.0f * (3.14159265f / 180.0f);
+    float f = 1.0f / tanf(fov_rad / 2.0f);
+    float near_p = 0.1f, far_p = distance;
+
+    matrix proj = {0};
+    proj.m[0] = f;
+    proj.m[5] = -f;                           // no Y flip
+    proj.m[10] = -(far_p / (far_p - near_p)); // negated vs standard
+    proj.m[11] = -1.0f; // w = -z_view → positive for front objects
+    proj.m[14] =
+        -(far_p * near_p) / (far_p - near_p); // negated vs standard → positive
+
+    // proj = math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f,
+    // distance);
+
+    LOGM(INFO, "Proj Matrix");
+    math_matrix_print(&proj);
+
+    LOGM(INFO, "Light View Matrix");
+    math_matrix_print(&light_view);
 
     l->transform = math_matrix_mul(proj, light_view);
 }
