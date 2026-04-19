@@ -974,7 +974,7 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
         return false;
     }
 
-    LOGM(API_DUMP, "Swapchain Size: %d | %d", extent.width, extent.height);
+    LOGM(API_DUMP, "swapchain size: %dx%d", extent.width, extent.height);
 
     c->swapchain.fmt = fmt.format;
     c->swapchain.extent = extent;
@@ -2961,7 +2961,8 @@ light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
 
     // light_space
     vec3 light_pos = (vec3){0, 10, 10};
-    vec3 target = (vec3){0, 0, 0}; // TODO: change to actual target
+    vec3 target = math_vec3_add(light_pos,
+                                res.direction); // TODO: change to actual target
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
@@ -3176,10 +3177,11 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
     vec3 target = math_vec3_add(l->pos, dir_n);
 
     matrix light_view = math_matrix_look_at(l->pos, target, up);
-    matrix proj =
-        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
+    // matrix proj =
+    // math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
+    matrix ortho = math_matrix_orthographic(-10, 10, -10, 10, 0.1f, distance);
 
-    l->transform = math_matrix_mul(proj, light_view);
+    l->transform = math_matrix_mul(ortho, light_view);
 }
 
 static bool update_lights(struct rcontext *c) {

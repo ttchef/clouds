@@ -80,12 +80,12 @@ i32 main(void) {
 
     renderer_set_model_texture(&c->rctx, torus, brick);
 
-    light_id spot =
-        renderer_create_spot_light(&c->rctx, (vec3){0, 1, 0}, (vec3){0, 0, -1},
-                                   (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
+    light_id spot = renderer_create_spot_light(
+        &c->rctx, (vec3){0, 1, -1}, (vec3){0, -0.5, -0.5},
+        (vec3){0.7, 0.2, 0.6}, 150.0f, 17.5f, 25.5f);
 
-    light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
-                                             (vec3){1.0, 0.0, 0.0});
+    // light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
+    // (vec3){1.0, 0.0, 0.0});
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
@@ -100,9 +100,9 @@ i32 main(void) {
         f32 g = (sin(glfwGetTime() + 1.0f) + 1) * 0.5f;
         f32 b = (sin(glfwGetTime() + 2.0f) + 1) * 0.5f;
 
-        renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos,
-                                   c->rctx.cam.direction, (vec3){r, g, b},
-                                   150.0f, 12.5f, 17.5f);
+        // renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos,
+        // c->rctx.cam.direction, (vec3){r, g, b},
+        // 20.0f, 12.5f, 17.5f);
 
         renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);
