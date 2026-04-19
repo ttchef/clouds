@@ -221,7 +221,7 @@ matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
     m.m[10] = -1.0f / (far - near);
 
     m.m[12] = -(right + left) / (right - left);
-    m.m[13] = -(top + bottom) / (top - bottom);
+    m.m[13] = (top + bottom) / (top - bottom);
     m.m[14] = -near / (far - near);
 
     m.m[15] = 1.0f;

@@ -6,6 +6,7 @@
 float calc_shadow(sampler2D shadowMap, vec4 light_space_pos, vec3 normal, vec3 light_dir) {
     vec3 proj = light_space_pos.xyz / light_space_pos.w;
 
+    // vec2 uv = vec2(proj.x * 0.5 + 0.5, proj.y * -0.5 + 0.5);
     vec2 uv = proj.xy * 0.5 + 0.5;
 
     if (uv.x < 0.0 || uv.x > 1.0 ||
