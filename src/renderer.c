@@ -1153,7 +1153,7 @@ static bool create_pipeline(struct rcontext *c, struct pipeline *pipeline,
         .depthClampEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
         .cullMode = skybox ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT,
-        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
     };
 
@@ -1326,7 +1326,7 @@ static bool create_shadow_pipeline(struct rcontext *c,
         .depthClampEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
         .cullMode = VK_CULL_MODE_FRONT_BIT,
-        .frontFace = VK_FRONT_FACE_CLOCKWISE,
+        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
         .depthBiasEnable = VK_TRUE,
     };
 
@@ -2533,12 +2533,12 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
     vec3 right = math_vec3_norm(math_vec3_cross(cam->direction, up));
 
     if (glfwGetKey(window, GLFW_KEY_W) != GLFW_RELEASE) {
-        cam->pos = math_vec3_subtract(
-            cam->pos, math_vec3_scale(forward, cam->speed * dt));
-    }
-    if (glfwGetKey(window, GLFW_KEY_S) != GLFW_RELEASE) {
         cam->pos =
             math_vec3_add(cam->pos, math_vec3_scale(forward, cam->speed * dt));
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) != GLFW_RELEASE) {
+        cam->pos = math_vec3_subtract(
+            cam->pos, math_vec3_scale(forward, cam->speed * dt));
     }
     if (glfwGetKey(window, GLFW_KEY_A) != GLFW_RELEASE) {
         cam->pos = math_vec3_subtract(cam->pos,
@@ -2596,7 +2596,7 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
 
     vec3 front;
     front.x = cos(DEG2RAD(c->cam.pitch)) * sin(DEG2RAD(c->cam.yaw));
-    front.y = sin(DEG2RAD(c->cam.pitch));
+    front.y = -sin(DEG2RAD(c->cam.pitch));
     front.z = -cos(DEG2RAD(c->cam.pitch)) * cos(DEG2RAD(c->cam.yaw));
     c->cam.direction = math_vec3_norm(front);
 }
@@ -3046,11 +3046,11 @@ light_id renderer_create_spot_light(struct rcontext *c, vec3 pos,
     }
 
     // light_space
-    vec3 light_pos = res.pos;
-    vec3 target = math_vec3_add(res.pos, res.direction);
-    vec3 up = (vec3){0, 1, 0};
+    vec3 dir_n = math_vec3_norm(res.direction);
+    vec3 up = (fabsf(dir_n.y) > 0.99f) ? (vec3){1, 0, 0} : (vec3){0, 1, 0};
+    vec3 target = math_vec3_add(res.pos, dir_n);
 
-    matrix light_view = math_matrix_look_at(light_pos, target, up);
+    matrix light_view = math_matrix_look_at(res.pos, target, up);
     matrix proj =
         math_matrix_perspective(outer_cutt_off * 2.0f, 1.0f, 0.1f, distance);
 
@@ -3168,11 +3168,11 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
     l->quadratic = kq;
 
     // light_space
-    vec3 light_pos = l->pos;
-    vec3 target = math_vec3_add(l->pos, math_vec3_norm(l->direction));
-    vec3 up = (vec3){0, 1, 0};
+    vec3 dir_n = math_vec3_norm(l->direction);
+    vec3 up = (fabsf(dir_n.y) > 0.99f) ? (vec3){1, 0, 0} : (vec3){0, 1, 0};
+    vec3 target = math_vec3_add(l->pos, dir_n);
 
-    matrix light_view = math_matrix_look_at(light_pos, target, up);
+    matrix light_view = math_matrix_look_at(l->pos, target, up);
     matrix proj =
         math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
 

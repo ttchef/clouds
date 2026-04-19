@@ -44,7 +44,7 @@ i32 main(void) {
     LOGM(INFO, "GLFW ext count: %d", n_glfw_exts);
     for (u32 i = 0; i < n_glfw_exts; i++) {
         exts[i] = glfw_exts[i];
-        LOGM(INFO, "Extension: %s", glfw_exts[i]);
+        LOGM(INFO, "instance extension: %s", glfw_exts[i]);
     }
     exts[n_glfw_exts] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
@@ -84,8 +84,8 @@ i32 main(void) {
         renderer_create_spot_light(&c->rctx, (vec3){0, 1, 0}, (vec3){0, 0, -1},
                                    (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
 
-    // light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
-    // (vec3){1.0, 0.0, 0.0});
+    light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
+                                             (vec3){1.0, 0.0, 0.0});
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {

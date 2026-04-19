@@ -70,6 +70,7 @@ vec3 math_vec3_mul(vec3 a, vec3 b); // wedge product
 vec3 math_vec3_scale(vec3 v, f32 scalar);
 f32 math_vec3_length(vec3 v);
 vec3 math_vec3_norm(vec3 v);
+vec3 math_vec3_negate(vec3 v);
 vec3 math_vec3_cross(vec3 a, vec3 b);
 
 matrix math_matrix_identity();
