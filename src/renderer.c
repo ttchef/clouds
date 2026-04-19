@@ -2246,8 +2246,11 @@ static void record_shadow_map(struct rcontext *c, struct frame_data *data,
     vkCmdBeginRendering(data->cmd_buffer, &shadow_render_info);
 
     VkViewport viewport1 = {
+        .x = 0,
+        .y = 0,
         .width = 1024,
         .height = 1024,
+        .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
 
