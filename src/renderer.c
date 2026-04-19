@@ -28,6 +28,15 @@ enum {
     LIGHT_TYPE_SPOT,
 };
 
+enum {
+    CUBE_MAP_X_POS,
+    CUBE_MAP_X_NEG,
+    CUBE_MAP_Y_POS,
+    CUBE_MAP_Y_NEG,
+    CUBE_MAP_Z_POS,
+    CUBE_MAP_Z_NEG,
+};
+
 // push constant
 struct model_color_pc {
     matrix model;
@@ -139,6 +148,10 @@ static bool create_surface(struct rcontext *c, GLFWwindow *window) {
     glfwCreateWindowSurface(c->instance, window, NULL, &c->surface);
     if (!c->surface) {
         LOGM(ERROR, "failed to create surface");
+
+        const char *description;
+        int code = glfwGetError(&description);
+        LOGM(ERROR, "Code: %d %s", code, description);
         return false;
     }
 
@@ -267,21 +280,394 @@ static bool create_log_dev(struct rcontext *c) {
     return true;
 }
 
+static bool create_vma(struct rcontext *c) {
+    VmaAllocatorCreateInfo create_info = {
+        .physicalDevice = c->phy_dev,
+        .device = c->dev,
+        .instance = c->instance,
+    };
+
+    if (vmaCreateAllocator(&create_info, &c->allocator) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create vma");
+        return false;
+    }
+
+    return true;
+}
+
+static struct buffer create_device_local_buffer(struct rcontext *c,
+                                                VkDeviceSize size,
+                                                VkBufferUsageFlags flags) {
+    struct buffer res = {
+        .type = BUFFER_TYPE_DEVICE_LOCAL,
+        .size = size,
+    };
+
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .usage = flags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .size = size,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+    };
+
+    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
+                        &res.alloc, NULL) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create device local buffer");
+        return (struct buffer){0};
+    }
+
+    return res;
+}
+
+static struct buffer create_host_visible_buffer(struct rcontext *c,
+                                                VkDeviceSize size,
+                                                VkBufferUsageFlags flags) {
+    struct buffer res = {
+        .type = BUFFER_TYPE_HOST_VISIBLE,
+        .size = size,
+    };
+
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .usage = flags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .size = size,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
+                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
+    };
+
+    VmaAllocationInfo alloc_out;
+
+    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
+                        &res.alloc, &alloc_out) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to host visible buffer");
+        return (struct buffer){0};
+    }
+
+    res.host_visible.mapped = alloc_out.pMappedData;
+
+    return res;
+}
+
+static struct buffer
+create_staging_buffer(struct rcontext *c, VkDeviceSize size, const void *data) {
+    struct buffer res = {
+        .type = BUFFER_TYPE_STAGING,
+        .size = size,
+    };
+
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .usage =
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .size = size,
+    };
+
+    VmaAllocationCreateInfo alloc_info = {
+        .usage = VMA_MEMORY_USAGE_CPU_ONLY,
+    };
+
+    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
+                        &res.alloc, NULL) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to create device local buffer");
+        return (struct buffer){0};
+    }
+
+    void *mapped;
+    vmaMapMemory(c->allocator, res.alloc, &mapped);
+    memcpy(mapped, data, size);
+    vmaUnmapMemory(c->allocator, res.alloc);
+
+    return res;
+}
+
+static bool copy_buffer(struct rcontext *c, struct buffer *staging,
+                        struct buffer *buffer) {
+    // dont handle at the moment
+    if (buffer->size != staging->size) {
+        LOGM(ERROR, "buffer size and staing buffer size are not equal");
+        return false;
+    }
+
+    VkCommandPool cmd_pool;
+    VkCommandBuffer cmd_buffer;
+
+    VkCommandPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = c->graphics_queue.index,
+    };
+
+    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &cmd_pool) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create one time use command pool for staging "
+                    "buffer copy");
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = cmd_pool,
+        .commandBufferCount = 1,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+    };
+
+    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create commnad buffer for staging buffer copy");
+        return false;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(
+            ERROR,
+            "failed to begin recording command buffer for staging buffer copy");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkBufferCopy region = {
+        .size = buffer->size,
+    };
+
+    vkCmdCopyBuffer(cmd_buffer, staging->handle, buffer->handle, 1, &region);
+
+    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
+        LOGM(ERROR,
+             "failed to end recording command buffer for staging buffer copy");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd_buffer,
+    };
+
+    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit command buffer for staging buffer copy");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to wait for queues");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+
+    return true;
+}
+
+static bool upload_data_to_buffer(struct rcontext *c, struct buffer *buffer,
+                                  u32 data_size, void *data) {
+    if (data_size != buffer->size) {
+        LOGM(WARN, "buffer->size != data_size");
+        return false;
+    }
+
+    struct buffer staging = create_staging_buffer(c, data_size, data);
+    copy_buffer(c, &staging, buffer);
+    vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+
+    return true;
+}
+
+static bool upload_data_to_image(struct rcontext *c, struct image *image,
+                                 u32 data_size, void *data, u32 width,
+                                 u32 height, VkImageLayout final_layout,
+                                 VkAccessFlags dst_access_mask,
+                                 i32 *cube_face) {
+    VkCommandPool cmd_pool;
+    VkCommandBuffer cmd_buffer;
+
+    VkCommandPoolCreateInfo pool_create_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = c->graphics_queue.index,
+    };
+
+    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &cmd_pool) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command pool");
+        return false;
+    }
+
+    VkCommandBufferAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+        .commandPool = cmd_pool,
+    };
+
+    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create command buffer");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+
+    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to begin recording into command buffer");
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkImageMemoryBarrier image_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image->handle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+    };
+
+    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, 0, 0, 0, 1,
+                         &image_barrier);
+
+    struct buffer staging = create_staging_buffer(c, data_size, data);
+
+    VkBufferImageCopy region = {0};
+    if (cube_face) {
+        if (!image->cube_map) {
+            // TODO: add good error handling
+            LOGM(ERROR, "trying to copy cube map into non cube image");
+        }
+
+        if (width != height) {
+            LOGM(ERROR, "cube map with not equal dimnenstions: %ux%u", width,
+                 height);
+        }
+
+        i32 face = *cube_face;
+        region = (VkBufferImageCopy){
+            .bufferOffset = face * width * width * 4 * sizeof(f32),
+            .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .imageSubresource.baseArrayLayer = face,
+            .imageSubresource.layerCount = 1,
+            .imageExtent = (VkExtent3D){width, height, 1},
+        };
+    } else {
+        // TODO: add good error handling
+        if (image->cube_map) {
+            LOGM(ERROR, "trying to copy normal image into cube map");
+        }
+
+        region = (VkBufferImageCopy){
+            .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .imageSubresource.layerCount = 1,
+            .imageExtent = (VkExtent3D){width, height, 1},
+        };
+    }
+
+    vkCmdCopyBufferToImage(cmd_buffer, staging.handle, image->handle,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    image_barrier = (VkImageMemoryBarrier){
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = final_layout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = image->handle,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .layerCount = 1,
+                .levelCount = 1,
+            },
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = dst_access_mask,
+    };
+
+    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, 0, 0, 0,
+                         1, &image_barrier);
+    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
+        LOGM(ERROR, "failed recording into command buffer");
+        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd_buffer,
+    };
+
+    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit queue");
+        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
+        LOGM(ERROR, "Failed to wait for queue");
+        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+        return false;
+    }
+
+    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
+
+    vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
+
+    return true;
+}
+
 static bool create_image(struct rcontext *c, struct image *image, u32 width,
-                         u32 height, VkFormat fmt, VkImageUsageFlags usage) {
+                         u32 height, VkFormat fmt, VkImageUsageFlags usage,
+                         bool cube_map) {
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
         .extent = (VkExtent3D){width, height, 1},
         .mipLevels = 1,
-        .arrayLayers = 1,
+        .arrayLayers = cube_map ? 6 : 1,
         .format = fmt,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .usage = usage,
+        .flags = cube_map ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
+
+    image->cube_map = cube_map;
 
     VmaAllocationCreateInfo alloc_info = {
         .usage = VMA_MEMORY_USAGE_GPU_ONLY,
@@ -296,14 +682,14 @@ static bool create_image(struct rcontext *c, struct image *image, u32 width,
     VkImageViewCreateInfo view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image->handle,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .viewType = cube_map ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
         .format = fmt,
         .subresourceRange =
             {
                 .aspectMask = fmt == VK_FORMAT_D32_SFLOAT
                                   ? VK_IMAGE_ASPECT_DEPTH_BIT
                                   : VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = 1,
+                .layerCount = cube_map ? 6 : 1,
                 .levelCount = 1,
             },
     };
@@ -313,6 +699,106 @@ static bool create_image(struct rcontext *c, struct image *image, u32 width,
         LOGM(ERROR, "failed to create vulkan image");
         return false;
     }
+
+    return true;
+}
+
+static vec3 cube_map_face_to_xyz(int x, int y, int face, int size) {
+    float u = 2.0f * ((x + 0.5f) / size) - 1.0f;
+    float v = 2.0f * ((y + 0.5f) / size) - 1.0f;
+
+    switch (face) {
+    case CUBE_MAP_X_POS:
+        return (vec3){1.0f, -v, -u};
+    case CUBE_MAP_X_NEG:
+        return (vec3){-1.0f, -v, u};
+    case CUBE_MAP_Y_POS:
+        return (vec3){u, 1.0f, v};
+    case CUBE_MAP_Y_NEG:
+        return (vec3){u, -1.0f, -v};
+    case CUBE_MAP_Z_POS:
+        return (vec3){u, -v, 1.0f};
+    case CUBE_MAP_Z_NEG:
+        return (vec3){-u, -v, -1.0f};
+    default:
+        LOGM(ERROR, "invalid face");
+        return (vec3){0};
+    }
+}
+
+static bool create_cube_map(struct rcontext *c, struct image *image,
+                            const char *path) {
+    i32 width, height, bpp;
+
+    // for high precision load as float
+    const f32 *data = stbi_loadf(path, &width, &height, &bpp, 4);
+    if (!data) {
+        LOGM(ERROR, "failed to load image");
+        return false;
+    }
+
+    if (width != 2 * height) {
+        LOGM(ERROR, "expected equirectangular map (2:1 aspect) but it is %dx%d",
+             width, height);
+        stbi_image_free((void *)data);
+        return false;
+    }
+
+    i32 face_size = width * 0.25f;
+    if (!create_image(
+            c, image, face_size, face_size, VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            true)) {
+        stbi_image_free((void *)data);
+        return false; // error message already printed in create_image
+                      // function
+    }
+
+    u32 size = face_size * face_size * 4 * sizeof(f32);
+    f32 *cube_face_data = malloc(size);
+    if (!cube_face_data) {
+        LOGM(ERROR, "failed to allocate cube face data");
+        return false;
+    }
+
+    // for every face
+    for (i32 face = 0; face < 6; face++) {
+        for (i32 y = 0; y < face_size; y++) {
+            for (i32 x = 0; x < face_size; x++) {
+                vec3 p =
+                    math_vec3_norm(cube_map_face_to_xyz(x, y, face, face_size));
+
+                // convert to 3D spherical coordinates
+                f32 r = sqrtf(p.x * p.x + p.y * p.y);
+                f32 phi = atan2f(p.y, p.x);
+                f32 theta = atan2f(p.z, r);
+
+                // scaled uv
+                f32 u = (f32)((phi + M_PI) / (2.0f * M_PI)) * width;
+                f32 v = (f32)((M_PI / 2.0f - theta) / M_PI) * height;
+
+                i32 u1 = math_clampi((i32)roundf(u), 0, width - 1);
+                i32 v1 = math_clampi((i32)roundf(v), 0, height - 1);
+
+                v1 = height - 1 - v1;
+
+                const f32 *src = data + (v1 * width + u1) * 4;
+                i32 dst_idx = (y * face_size + x) * 4;
+
+                cube_face_data[dst_idx + 0] = src[0];
+                cube_face_data[dst_idx + 1] = src[1];
+                cube_face_data[dst_idx + 2] = src[2];
+                cube_face_data[dst_idx + 3] = src[3];
+            }
+        }
+        upload_data_to_image(c, image, size, cube_face_data, face_size,
+                             face_size,
+                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                             VK_ACCESS_SHADER_READ_BIT, NULL);
+    }
+
+    free(cube_face_data);
+    stbi_image_free((void *)data);
 
     return true;
 }
@@ -531,7 +1017,7 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
 
         create_image(c, &c->swapchain.depth_images[i], w, h,
                      VK_FORMAT_D32_SFLOAT,
-                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
     }
 
     return true;
@@ -603,7 +1089,8 @@ static bool create_pipeline(struct rcontext *c, struct pipeline *pipeline,
                             VkVertexInputBindingDescription binding_decs,
                             VkVertexInputAttributeDescription *attribute_decs,
                             u32 n_attributes,
-                            VkPipelineLayoutCreateInfo layout_info) {
+                            VkPipelineLayoutCreateInfo layout_info,
+                            bool skybox) {
     VkShaderModule vert_module;
     if (!create_shader_module(c, &vert_module, vertex_path)) {
         return false;
@@ -665,7 +1152,7 @@ static bool create_pipeline(struct rcontext *c, struct pipeline *pipeline,
         .lineWidth = 1.0f,
         .depthClampEnable = VK_FALSE,
         .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_BACK_BIT,
+        .cullMode = skybox ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT,
         .frontFace = VK_FRONT_FACE_CLOCKWISE,
         .depthBiasEnable = VK_FALSE,
     };
@@ -678,8 +1165,9 @@ static bool create_pipeline(struct rcontext *c, struct pipeline *pipeline,
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
         .depthTestEnable = VK_TRUE,
-        .depthWriteEnable = VK_TRUE,
-        .depthCompareOp = VK_COMPARE_OP_LESS,
+        .depthWriteEnable = skybox ? VK_FALSE : VK_TRUE,
+        .depthCompareOp =
+            skybox ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS,
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f,
     };
@@ -993,347 +1481,6 @@ static bool create_frame_data(struct rcontext *c) {
     return true;
 }
 
-static bool create_vma(struct rcontext *c) {
-    VmaAllocatorCreateInfo create_info = {
-        .physicalDevice = c->phy_dev,
-        .device = c->dev,
-        .instance = c->instance,
-    };
-
-    if (vmaCreateAllocator(&create_info, &c->allocator) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to create vma");
-        return false;
-    }
-
-    return true;
-}
-
-static struct buffer create_device_local_buffer(struct rcontext *c,
-                                                VkDeviceSize size,
-                                                VkBufferUsageFlags flags) {
-    struct buffer res = {
-        .type = BUFFER_TYPE_DEVICE_LOCAL,
-        .size = size,
-    };
-
-    VkBufferCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .usage = flags,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .size = size,
-    };
-
-    VmaAllocationCreateInfo alloc_info = {
-        .usage = VMA_MEMORY_USAGE_GPU_ONLY,
-    };
-
-    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
-                        &res.alloc, NULL) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to create device local buffer");
-        return (struct buffer){0};
-    }
-
-    return res;
-}
-
-static struct buffer create_host_visible_buffer(struct rcontext *c,
-                                                VkDeviceSize size,
-                                                VkBufferUsageFlags flags) {
-    struct buffer res = {
-        .type = BUFFER_TYPE_HOST_VISIBLE,
-        .size = size,
-    };
-
-    VkBufferCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .usage = flags,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .size = size,
-    };
-
-    VmaAllocationCreateInfo alloc_info = {
-        .usage = VMA_MEMORY_USAGE_CPU_TO_GPU,
-        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                 VMA_ALLOCATION_CREATE_MAPPED_BIT,
-    };
-
-    VmaAllocationInfo alloc_out;
-
-    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
-                        &res.alloc, &alloc_out) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to host visible buffer");
-        return (struct buffer){0};
-    }
-
-    res.host_visible.mapped = alloc_out.pMappedData;
-
-    return res;
-}
-
-static struct buffer
-create_staging_buffer(struct rcontext *c, VkDeviceSize size, const void *data) {
-    struct buffer res = {
-        .type = BUFFER_TYPE_STAGING,
-        .size = size,
-    };
-
-    VkBufferCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .usage =
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .size = size,
-    };
-
-    VmaAllocationCreateInfo alloc_info = {
-        .usage = VMA_MEMORY_USAGE_CPU_ONLY,
-    };
-
-    if (vmaCreateBuffer(c->allocator, &create_info, &alloc_info, &res.handle,
-                        &res.alloc, NULL) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to create device local buffer");
-        return (struct buffer){0};
-    }
-
-    void *mapped;
-    vmaMapMemory(c->allocator, res.alloc, &mapped);
-    memcpy(mapped, data, size);
-    vmaUnmapMemory(c->allocator, res.alloc);
-
-    return res;
-}
-
-static bool copy_buffer(struct rcontext *c, struct buffer *staging,
-                        struct buffer *buffer) {
-    // dont handle at the moment
-    if (buffer->size != staging->size) {
-        LOGM(ERROR, "buffer size and staing buffer size are not equal");
-        return false;
-    }
-
-    VkCommandPool cmd_pool;
-    VkCommandBuffer cmd_buffer;
-
-    VkCommandPoolCreateInfo pool_create_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-        .queueFamilyIndex = c->graphics_queue.index,
-    };
-
-    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &cmd_pool) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to create one time use command pool for staging "
-                    "buffer copy");
-        return false;
-    }
-
-    VkCommandBufferAllocateInfo alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = cmd_pool,
-        .commandBufferCount = 1,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-    };
-
-    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to create commnad buffer for staging buffer copy");
-        return false;
-    }
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-
-    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
-        LOGM(
-            ERROR,
-            "failed to begin recording command buffer for staging buffer copy");
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    VkBufferCopy region = {
-        .size = buffer->size,
-    };
-
-    vkCmdCopyBuffer(cmd_buffer, staging->handle, buffer->handle, 1, &region);
-
-    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
-        LOGM(ERROR,
-             "failed to end recording command buffer for staging buffer copy");
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    VkSubmitInfo sub_info = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cmd_buffer,
-    };
-
-    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to submit command buffer for staging buffer copy");
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to wait for queues");
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-
-    return true;
-}
-
-static bool upload_data_to_buffer(struct rcontext *c, struct buffer *buffer,
-                                  u32 data_size, void *data) {
-    if (data_size != buffer->size) {
-        LOGM(WARN, "buffer->size != data_size");
-        return false;
-    }
-
-    struct buffer staging = create_staging_buffer(c, data_size, data);
-    copy_buffer(c, &staging, buffer);
-    vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
-
-    return true;
-}
-
-static bool upload_data_to_image(struct rcontext *c, struct image *image,
-                                 u32 data_size, void *data, u32 width,
-                                 u32 height, VkImageLayout final_layout,
-                                 VkAccessFlags dst_access_mask) {
-    VkCommandPool cmd_pool;
-    VkCommandBuffer cmd_buffer;
-
-    VkCommandPoolCreateInfo pool_create_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-        .queueFamilyIndex = c->graphics_queue.index,
-    };
-
-    if (vkCreateCommandPool(c->dev, &pool_create_info, NULL, &cmd_pool) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to create command pool");
-        return false;
-    }
-
-    VkCommandBufferAllocateInfo alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-        .commandPool = cmd_pool,
-    };
-
-    if (vkAllocateCommandBuffers(c->dev, &alloc_info, &cmd_buffer) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to create command buffer");
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-
-    if (vkBeginCommandBuffer(cmd_buffer, &begin_info) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to begin recording into command buffer");
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    VkImageMemoryBarrier image_barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = image->handle,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = 1,
-                .levelCount = 1,
-            },
-        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-    };
-
-    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, 0, 0, 0, 1,
-                         &image_barrier);
-
-    struct buffer staging = create_staging_buffer(c, data_size, data);
-
-    VkBufferImageCopy region = {
-        .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-        .imageSubresource.layerCount = 1,
-        .imageExtent = (VkExtent3D){width, height, 1},
-    };
-
-    vkCmdCopyBufferToImage(cmd_buffer, staging.handle, image->handle,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-    image_barrier = (VkImageMemoryBarrier){
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .newLayout = final_layout,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = image->handle,
-        .subresourceRange =
-            {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = 1,
-                .levelCount = 1,
-            },
-        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .dstAccessMask = dst_access_mask,
-    };
-
-    vkCmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, 0, 0, 0,
-                         1, &image_barrier);
-    if (vkEndCommandBuffer(cmd_buffer) != VK_SUCCESS) {
-        LOGM(ERROR, "failed recording into command buffer");
-        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    VkSubmitInfo sub_info = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cmd_buffer,
-    };
-
-    if (vkQueueSubmit(c->graphics_queue.handle, 1, &sub_info, VK_NULL_HANDLE) !=
-        VK_SUCCESS) {
-        LOGM(ERROR, "failed to submit queue");
-        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    if (vkQueueWaitIdle(c->graphics_queue.handle) != VK_SUCCESS) {
-        LOGM(ERROR, "Failed to wait for queue");
-        vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
-        vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-        return false;
-    }
-
-    vkDestroyCommandPool(c->dev, cmd_pool, NULL);
-
-    vmaDestroyBuffer(c->allocator, staging.handle, staging.alloc);
-
-    return true;
-}
-
 static bool create_model_color_pipeline(struct rcontext *c) {
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
@@ -1377,7 +1524,7 @@ static bool create_model_color_pipeline(struct rcontext *c) {
     if (!create_pipeline(
             c, &c->model_color_pip, "build/spv/model_color-vert.spv",
             "build/spv/model_color-frag.spv", binding_desc, attrib_desc,
-            ARRAY_COUNT(attrib_desc), layout_create_info)) {
+            ARRAY_COUNT(attrib_desc), layout_create_info, false)) {
         return false;
     }
 
@@ -1427,7 +1574,50 @@ static bool create_model_texture_pipeline(struct rcontext *c) {
     if (!create_pipeline(
             c, &c->model_texture_pip, "build/spv/model_texture-vert.spv",
             "build/spv/model_texture-frag.spv", binding_desc, attrib_desc,
-            ARRAY_COUNT(attrib_desc), layout_create_info)) {
+            ARRAY_COUNT(attrib_desc), layout_create_info, false)) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool create_skybox_pipeline(struct rcontext *c) {
+
+    VkVertexInputBindingDescription binding_desc = {
+        .binding = 0,
+        .stride = sizeof(f32) * 8,
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    VkPipelineLayoutCreateInfo layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &c->descriptors.layout,
+    };
+
+    if (!create_pipeline(c, &c->model_texture_pip, "build/spv/skybox-vert.spv",
+                         "build/spv/skybox-frag.spv", binding_desc, attrib_desc,
+                         ARRAY_COUNT(attrib_desc), layout_create_info, true)) {
         return false;
     }
 
@@ -1465,7 +1655,10 @@ static bool create_global_desc(struct rcontext *c) {
             MAX_TEXTURES * FRAMES_IN_FLIGHT +
                 // shadow maps
                 (MAX_DIRECTIONAL_LIGHTS + MAX_POINT_LIGHTS + MAX_SPOT_LIGHTS) *
-                    FRAMES_IN_FLIGHT,
+                    FRAMES_IN_FLIGHT +
+
+                // skybox
+                FRAMES_IN_FLIGHT,
         },
         {
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -1509,6 +1702,10 @@ static bool create_global_desc(struct rcontext *c) {
         {GLOBAL_DESC_SHADOW_SPOT_BINDING,
          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_SPOT_LIGHTS,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
+        // {GLOBAL_DESC_SKYBOX_BINDING,
+        // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+        // VK_SHADER_STAGE_FRAGMENT_BIT, 0},
     };
 
     VkDescriptorBindingFlags binding_flags[] = {
@@ -1518,6 +1715,7 @@ static bool create_global_desc(struct rcontext *c) {
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        // VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
     };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
@@ -1741,6 +1939,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created model_texture pipeline");
 
+    // if (!create_skybox_pipeline(rctx)) {
+    // return false;
+    // }
+
+    LOGM(INFO, "created skybox pipeline");
+
     if (!create_frame_data(rctx)) {
         return false;
     }
@@ -1761,7 +1965,7 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     // camera
     rctx->cam.pos = (vec3){0.0f, 0.0f, 0.0f};
-    rctx->cam.direction = (vec3){0.0f, 0.0f, 1.0f};
+    rctx->cam.direction = (vec3){0.0f, 0.0f, -1.0f};
     rctx->cam.speed = 5.0f;
     rctx->cam.sensitivity = 0.15f;
 
@@ -1923,7 +2127,8 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
             if (cmd->model_texture.texture != NO_TEXTURE) {
                 if (texture != NO_TEXTURE) {
                     LOGM(WARN,
-                         "model_texture: %d has two textures one in the model"
+                         "model_texture: %d has two textures one in the "
+                         "model"
                          "and one extern",
                          cmd->model_texture.id);
                 }
@@ -2392,7 +2597,7 @@ void renderer_update_cam(struct rcontext *c, GLFWwindow *window, f32 dt) {
     vec3 front;
     front.x = cos(DEG2RAD(c->cam.pitch)) * sin(DEG2RAD(c->cam.yaw));
     front.y = sin(DEG2RAD(c->cam.pitch));
-    front.z = cos(DEG2RAD(c->cam.pitch)) * cos(DEG2RAD(c->cam.yaw));
+    front.z = -cos(DEG2RAD(c->cam.pitch)) * cos(DEG2RAD(c->cam.yaw));
     c->cam.direction = math_vec3_norm(front);
 }
 
@@ -2405,10 +2610,11 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
     };
 
     create_image(c, &res.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
-                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                 false);
     upload_data_to_image(c, &res.image, width * height * 4, data, width, height,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                         VK_ACCESS_SHADER_READ_BIT);
+                         VK_ACCESS_SHADER_READ_BIT, NULL);
 
     // TODO: better datastructure ???
     i32 i = 0;
@@ -2680,7 +2886,8 @@ static u32 create_shadow_map(struct rcontext *c, struct image *image,
     create_image(c, image, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE,
                  VK_FORMAT_D32_SFLOAT,
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                     VK_IMAGE_USAGE_SAMPLED_BIT);
+                     VK_IMAGE_USAGE_SAMPLED_BIT,
+                 false);
 
     VkDescriptorImageInfo image_info = {
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -2756,8 +2963,6 @@ light_id renderer_create_dir_light(struct rcontext *c, vec3 direction,
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
     matrix ortho = math_matrix_orthographic(-20, 20, -20, 20, 0.1f, 100.0f);
-    ortho.m[10] *= -1.0f;
-    ortho.m[14] *= -1.0f;
 
     res.transform = math_matrix_mul(ortho, light_view);
 
@@ -2846,8 +3051,8 @@ light_id renderer_create_spot_light(struct rcontext *c, vec3 pos,
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
-    matrix proj = math_matrix_perspective_no_flip(outer_cutt_off * 2.0f, 1.0f,
-                                                  0.1f, distance);
+    matrix proj =
+        math_matrix_perspective(outer_cutt_off * 2.0f, 1.0f, 0.1f, distance);
 
     res.transform = math_matrix_mul(proj, light_view);
 
@@ -2968,27 +3173,8 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
     vec3 up = (vec3){0, 1, 0};
 
     matrix light_view = math_matrix_look_at(light_pos, target, up);
-
-    float fov_rad = outer_cutt_of * 2.0f * (3.14159265f / 180.0f);
-    float f = 1.0f / tanf(fov_rad / 2.0f);
-    float near_p = 0.1f, far_p = distance;
-
-    matrix proj = {0};
-    proj.m[0] = f;
-    proj.m[5] = -f;                           // no Y flip
-    proj.m[10] = -(far_p / (far_p - near_p)); // negated vs standard
-    proj.m[11] = -1.0f; // w = -z_view → positive for front objects
-    proj.m[14] =
-        -(far_p * near_p) / (far_p - near_p); // negated vs standard → positive
-
-    // proj = math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f,
-    // distance);
-
-    LOGM(INFO, "Proj Matrix");
-    math_matrix_print(&proj);
-
-    LOGM(INFO, "Light View Matrix");
-    math_matrix_print(&light_view);
+    matrix proj =
+        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
 
     l->transform = math_matrix_mul(proj, light_view);
 }

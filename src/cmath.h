@@ -89,10 +89,10 @@ void math_vec3_print(vec3 v);
 void math_vec4_print(vec4 v);
 void math_matrix_print(matrix *m);
 
+// right handed
 matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
                                 f32 near, f32 far);
 matrix math_matrix_perspective(f32 fov, f32 aspect, f32 near, f32 far);
-matrix math_matrix_perspective_no_flip(f32 fov, f32 aspect, f32 near, f32 far);
 matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up);
 
 #endif // CMAHTH_H

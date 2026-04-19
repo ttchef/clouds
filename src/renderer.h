@@ -34,6 +34,7 @@ struct image {
     VkImage handle;
     VkImageView view;
     VmaAllocation alloc;
+    bool cube_map;
 };
 
 struct swapchain {
@@ -300,6 +301,7 @@ struct rcontext {
 
     struct pipeline model_color_pip;
     struct pipeline model_texture_pip;
+    struct pipeline skybox_pip;
 
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];

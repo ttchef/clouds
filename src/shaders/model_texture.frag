@@ -65,6 +65,7 @@ void main() {
     vec4 light_space = u_lights.spot[0].transform * vec4(in_world_pos, 1.0);
     vec3 coords = light_space.xyz / light_space.w;
     coords.xy = coords.xy * 0.5 + 0.5;
+    coords.y = 1.0 - coords.y;
 
     float damn = texture(u_shadow_spot[nonuniformEXT(0)], coords.xy).r;
 

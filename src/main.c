@@ -21,12 +21,12 @@ void glfw_resize_callback(GLFWwindow *window, i32 w, i32 h) {
 i32 main(void) {
     struct context *c = calloc(sizeof(struct context), 1);
 
+    // glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     if (!glfwInit()) {
         fprintf(stderr, "failed to init glfw\n");
         return 1;
     }
 
-    glfwWindowHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     c->window = glfwCreateWindow(800, 600, "Clouds", NULL, NULL);
     if (!c->window) {
@@ -41,8 +41,10 @@ i32 main(void) {
     u32 n_exts = n_glfw_exts + 1;
     const char *exts[n_exts];
 
+    LOGM(INFO, "GLFW ext count: %d", n_glfw_exts);
     for (u32 i = 0; i < n_glfw_exts; i++) {
         exts[i] = glfw_exts[i];
+        LOGM(INFO, "Extension: %s", glfw_exts[i]);
     }
     exts[n_glfw_exts] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
@@ -98,14 +100,9 @@ i32 main(void) {
         f32 g = (sin(glfwGetTime() + 1.0f) + 1) * 0.5f;
         f32 b = (sin(glfwGetTime() + 2.0f) + 1) * 0.5f;
 
-        vec3 light_dir = {
-            -c->rctx.cam.direction.x,
-            -c->rctx.cam.direction.y,
-            -c->rctx.cam.direction.z,
-        };
-
-        renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos, light_dir,
-                                   (vec3){r, g, b}, 150.0f, 12.5f, 17.5f);
+        renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos,
+                                   c->rctx.cam.direction, (vec3){r, g, b},
+                                   150.0f, 12.5f, 17.5f);
 
         renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);
