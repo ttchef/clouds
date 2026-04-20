@@ -1623,7 +1623,7 @@ static bool create_skybox_pipeline(struct rcontext *c) {
     }
 
     // TODO: move out into a good function
-    create_cube_map(c, &c->skybox, "assets/skyboxes/test.hdr");
+    create_cube_map(c, &c->skybox, "assets/skyboxes/galaxy.hdr");
 
     VkDescriptorImageInfo image_info = {
         .sampler = c->sampler,
