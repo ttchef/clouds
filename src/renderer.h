@@ -303,6 +303,8 @@ struct rcontext {
     struct pipeline model_texture_pip;
     struct pipeline skybox_pip;
 
+    struct image skybox;
+
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
 

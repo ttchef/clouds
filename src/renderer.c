@@ -548,6 +548,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .layerCount = 1,
                 .levelCount = 1,
+                .baseArrayLayer = cube_face ? *cube_face : 0,
             },
         .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
     };
@@ -572,7 +573,6 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
 
         i32 face = *cube_face;
         region = (VkBufferImageCopy){
-            .bufferOffset = face * width * width * 4 * sizeof(f32),
             .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .imageSubresource.baseArrayLayer = face,
             .imageSubresource.layerCount = 1,
@@ -606,6 +606,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
                 .layerCount = 1,
                 .levelCount = 1,
+                .baseArrayLayer = cube_face ? *cube_face : 0,
             },
         .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
         .dstAccessMask = dst_access_mask,
@@ -794,7 +795,7 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
         upload_data_to_image(c, image, size, cube_face_data, face_size,
                              face_size,
                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                             VK_ACCESS_SHADER_READ_BIT, NULL);
+                             VK_ACCESS_SHADER_READ_BIT, &face);
     }
 
     free(cube_face_data);
@@ -1615,10 +1616,32 @@ static bool create_skybox_pipeline(struct rcontext *c) {
         .pSetLayouts = &c->descriptors.layout,
     };
 
-    if (!create_pipeline(c, &c->model_texture_pip, "build/spv/skybox-vert.spv",
+    if (!create_pipeline(c, &c->skybox_pip, "build/spv/skybox-vert.spv",
                          "build/spv/skybox-frag.spv", binding_desc, attrib_desc,
                          ARRAY_COUNT(attrib_desc), layout_create_info, true)) {
         return false;
+    }
+
+    // TODO: move out into a good function
+    create_cube_map(c, &c->skybox, "assets/skyboxes/test.hdr");
+
+    VkDescriptorImageInfo image_info = {
+        .sampler = c->sampler,
+        .imageView = c->skybox.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pImageInfo = &image_info,
+        .dstBinding = GLOBAL_DESC_SKYBOX_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = c->descriptors.sets[i];
+        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
     }
 
     return true;
@@ -1703,9 +1726,8 @@ static bool create_global_desc(struct rcontext *c) {
          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, MAX_SPOT_LIGHTS,
          VK_SHADER_STAGE_FRAGMENT_BIT, 0},
 
-        // {GLOBAL_DESC_SKYBOX_BINDING,
-        // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
-        // VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+        {GLOBAL_DESC_SKYBOX_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+         1, VK_SHADER_STAGE_FRAGMENT_BIT, 0},
     };
 
     VkDescriptorBindingFlags binding_flags[] = {
@@ -1715,7 +1737,7 @@ static bool create_global_desc(struct rcontext *c) {
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
-        // VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        0,
     };
 
     VkDescriptorSetLayoutBindingFlagsCreateInfo flags_info = {
@@ -1939,9 +1961,9 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created model_texture pipeline");
 
-    // if (!create_skybox_pipeline(rctx)) {
-    // return false;
-    // }
+    if (!create_skybox_pipeline(rctx)) {
+        return false;
+    }
 
     LOGM(INFO, "created skybox pipeline");
 

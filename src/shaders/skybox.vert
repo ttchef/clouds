@@ -16,7 +16,6 @@ layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
     mat4 proj;
 } u_matrix;
 
-
 void main() {
     out_dir = in_pos;
 
