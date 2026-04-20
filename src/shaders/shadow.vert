@@ -10,6 +10,8 @@ layout (location = 1) in vec2 in_uv;
 layout (location = 2) in vec3 in_normal;
 
 layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
+    mat4 proj;
+    mat4 view;
     mat4 proj_view;
 } u_matrix;
 

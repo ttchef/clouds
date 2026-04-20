@@ -12,8 +12,9 @@ layout (location = 2) in vec3 in_normal;
 layout (location = 0) out vec3 out_dir;
 
 layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
-    mat4 view;
     mat4 proj;
+    mat4 view;
+    mat4 proj_view;
 } u_matrix;
 
 void main() {
@@ -22,6 +23,6 @@ void main() {
     // cancel view translation
     mat4 view_rot = mat4(mat3(u_matrix.view));
 
-    vec4 pos = u_matrix.proj * u_matrix.view * vec4(in_pos, 1.0);
+    vec4 pos = u_matrix.proj * view_rot * vec4(in_pos, 1.0);
     gl_Position = pos.xyww;
 }

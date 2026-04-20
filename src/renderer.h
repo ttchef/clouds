@@ -223,6 +223,8 @@ struct light_manager {
 };
 
 struct matrix_ubo_data {
+    matrix proj;
+    matrix view;
     matrix proj_view;
 };
 

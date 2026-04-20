@@ -770,9 +770,9 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
                     math_vec3_norm(cube_map_face_to_xyz(x, y, face, face_size));
 
                 // convert to 3D spherical coordinates
-                f32 r = sqrtf(p.x * p.x + p.y * p.y);
-                f32 phi = atan2f(p.y, p.x);
-                f32 theta = atan2f(p.z, r);
+                f32 r = sqrtf(p.x * p.x + p.z * p.z);
+                f32 phi = atan2f(p.z, p.x);
+                f32 theta = atan2f(-p.y, r);
 
                 // scaled uv
                 f32 u = (f32)((phi + M_PI) / (2.0f * M_PI)) * width;
@@ -2218,6 +2218,26 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
     }
 }
 
+static void record_skybox(struct rcontext *c, struct frame_data *data) {
+    VkDeviceSize offsets[] = {0};
+
+    vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      c->skybox_pip.handle);
+
+    vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
+                           &c->models[c->box_id].vertex_buffer.handle, offsets);
+    vkCmdBindIndexBuffer(data->cmd_buffer,
+                         c->models[c->box_id].index_buffer.handle, 0,
+                         VK_INDEX_TYPE_UINT16);
+
+    vkCmdBindDescriptorSets(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            c->skybox_pip.layout, 0, 1,
+                            &c->descriptors.sets[c->frame_idx], 0, NULL);
+
+    vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1, 0, 0,
+                     0);
+}
+
 static void record_shadow_map(struct rcontext *c, struct frame_data *data,
                               struct image *map, matrix transform) {
     VkImageMemoryBarrier shadow_mem_barrier = (VkImageMemoryBarrier){
@@ -2438,6 +2458,7 @@ static bool record_cmd_buffer(struct rcontext *c) {
 
     vkCmdBeginRendering(data->cmd_buffer, &render_info);
 
+    record_skybox(c, data);
     render_draw_cmds(c, data, false, NULL);
 
     vkCmdEndRendering(data->cmd_buffer);
@@ -3199,8 +3220,10 @@ void renderer_update_spot_light(struct rcontext *c, light_id id, vec3 pos,
     vec3 target = math_vec3_add(l->pos, dir_n);
 
     matrix light_view = math_matrix_look_at(l->pos, target, up);
-    // matrix proj =
-    // math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
+    matrix proj =
+        math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
+
+    // proj doesnt work for some unkwon reason
     matrix ortho = math_matrix_orthographic(-10, 10, -10, 10, 0.1f, distance);
 
     l->transform = math_matrix_mul(ortho, light_view);
@@ -3309,6 +3332,11 @@ bool renderer_update(struct rcontext *c, f32 dt) {
     matrix view = math_matrix_look_at(
         c->cam.pos, math_vec3_add(c->cam.pos, c->cam.direction),
         (vec3){0.0f, 1.0f, 0.0f});
+
+    c->matrix_ubo.data.proj = perspective;
+    c->matrix_ubo.data.view = view;
+
+    // doesnt work when i do it in the shader idk why xD
     c->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
 
     memcpy(c->matrix_ubo.buffers[c->frame_idx].host_visible.mapped,
