@@ -31,7 +31,26 @@ layout (set = 0, binding = GLOBAL_DESC_SHADOW_SPOT_BINDING) uniform sampler2D u_
 
 layout (set = 0, binding = GLOBAL_DESC_SKYBOX_BINDING) uniform samplerCube skybox;
 
+layout (push_constant) uniform Push {
+    mat4 model;
+    vec4 cam_pos;
+    vec4 color;
+} pc;
+
 layout (location = 0) out vec4 out_color;
+
+vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
+    vec3 t0 = (box_min - ray_origin) / ray_dir;
+    vec3 t1 = (box_max - ray_origin) / ray_dir;
+
+    vec3 tmin = min(t0, t1);
+    vec3 tmax = max(t0, t1);
+
+    float entry = max(max(tmin.x, tmin.y), tmin.z);
+    float exit = min(min(tmax.x, tmax.y), tmax.z);
+
+    return vec2(entry, exit);
+}
 
 void main() {
     float gamma = 2.2;
@@ -39,10 +58,59 @@ void main() {
     vec3 normal = normalize(in_normal);
     vec3 color = pow(vec3(1.0, 0.0, 0.0), vec3(gamma));
 
-    // gamma correction
-    color = pow(color, vec3(1.0 / gamma));
+    // world space
+    vec3 ray_origin_ws = pc.cam_pos.xyz;
+    vec3 ray_dir_ws = normalize(in_world_pos - ray_origin_ws);
 
-    out_color = vec4(color, 1.0);
+    mat4 inverse_model = inverse(pc.model);
+
+    // object space
+    vec3 ray_origin = (inverse_model * vec4(ray_origin_ws, 1.0)).xyz;
+    vec3 ray_dir = normalize((inverse_model * vec4(ray_dir_ws, 0.0)).xyz);
+
+    vec3 box_min = vec3(-1.0);
+    vec3 box_max = vec3(1.0);
+
+    vec2 hit = intersect_box(ray_origin, ray_dir, box_min, box_max);
+
+    if (hit.x > hit.y) {
+        discard;
+    }
+
+    float t = max(hit.x, hit.y);
+    float end = hit.y;
+
+    float step_size = 0.05;
+
+    vec3 col = vec3(0.0);
+    float transmittance = 1.0;
+
+    for (; t < end; t += step_size) {
+        vec3 p = ray_origin + t * ray_dir;
+
+        // TODO: noise density
+        float d = 0.5;
+
+        // Beer lamber law
+        float absorb = exp(-d * step_size);
+
+        transmittance *= absorb;
+
+        vec3 light_color = vec3(1.0);
+
+        col += transmittance * d * light_color * step_size;
+
+        if (transmittance < 0.01) {
+            break;
+        }
+    }
+
+    // gamma correction
+    // color = pow(color, vec3(1.0 / gamma));
+
+    // out_color = vec4(color, 1.0);
+
+    out_color = vec4(col, 1.0 - transmittance);
 }
 
 

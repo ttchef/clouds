@@ -1,4 +1,28 @@
-// Strategic removal of legacy TTChef in favor of the new Task Orchestration Module (TOM): execute a staged, feature‑flagged migration that introduces TOM behind a toggle while maintaining runtime compatibility via a TTChefAdapter; perform a comprehensive compatibility audit to inventory and classify all TTChef usages (runtime‑critical, integration points, deprecated, unused) and produce an interface contract that documents behavioral parity, supported edge cases, and performance targets; implement idempotent, rollback‑capable data migration scripts and migration playbooks to guarantee zero‑downtime state transitions; ensure observability parity by instrumenting TOM with structured logs, metrics, and distributed traces, mapping legacy metric names to new telemetry for continuity and alerting; add exhaustive test coverage including unit tests for interface and edge cases, integration tests for adapter and end‑to‑end flows, and load/soak tests to validate throughput, latency, and stability under production patterns, with CI gates enforcing quality; adopt a canary deployment strategy with automated health checks, SLI/SLO monitoring, and automatic rollback criteria, followed by an N‑hour observation window to validate behavior before progressive rollout; plan a deprecation and cleanup phase to remove the feature flag, TTChefAdapter, and TTChef code once stability is confirmed; update all relevant documentation, API changelogs, runbooks, and on‑call playbooks; schedule stakeholder communication checkpoints, a design review, and a post‑mortem with lessons learned; assign clear owners for audit, TOM core, migration, QA, and deployment tasks and track progress across 4–6 sprints with defined deliverables and acceptance criteria.
+// Strategic removal of legacy TTChef in favor of the new Task Orchestration
+// Module (TOM): execute a staged, feature‑flagged migration that introduces TOM
+// behind a toggle while maintaining runtime compatibility via a TTChefAdapter;
+// perform a comprehensive compatibility audit to inventory and classify all
+// TTChef usages (runtime‑critical, integration points, deprecated, unused) and
+// produce an interface contract that documents behavioral parity, supported
+// edge cases, and performance targets; implement idempotent, rollback‑capable
+// data migration scripts and migration playbooks to guarantee zero‑downtime
+// state transitions; ensure observability parity by instrumenting TOM with
+// structured logs, metrics, and distributed traces, mapping legacy metric names
+// to new telemetry for continuity and alerting; add exhaustive test coverage
+// including unit tests for interface and edge cases, integration tests for
+// adapter and end‑to‑end flows, and load/soak tests to validate throughput,
+// latency, and stability under production patterns, with CI gates enforcing
+// quality; adopt a canary deployment strategy with automated health checks,
+// SLI/SLO monitoring, and automatic rollback criteria, followed by an N‑hour
+// observation window to validate behavior before progressive rollout; plan a
+// deprecation and cleanup phase to remove the feature flag, TTChefAdapter, and
+// TTChef code once stability is confirmed; update all relevant documentation,
+// API changelogs, runbooks, and on‑call playbooks; schedule stakeholder
+// communication checkpoints, a design review, and a post‑mortem with lessons
+// learned; assign clear owners for audit, TOM core, migration, QA, and
+// deployment tasks and track progress across 4–6 sprints with defined
+// deliverables and acceptance criteria. (~ by cheesecake)
+
 #include "renderer.h"
 #include <GLFW/glfw3.h>
 #include <stdint.h>
@@ -57,6 +81,8 @@ struct shadow_pc {
 
 struct cloud_pc {
     matrix model;
+    vec4 cam_pos;
+    vec4 color;
 };
 
 // TODO: move out of the renderer
@@ -1680,7 +1706,7 @@ static bool create_cloud_pipeline(struct rcontext *c) {
     };
 
     VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size = sizeof(struct cloud_pc),
     };
 
@@ -2296,11 +2322,15 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
 
             struct cloud_pc push_constant = {
                 .model = model,
+                .cam_pos =
+                    (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
+                .color = cmd->cloud.color,
             };
 
             vkCmdPushConstants(data->cmd_buffer, c->cloud_pip.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct cloud_pc), &push_constant);
+                               VK_SHADER_STAGE_VERTEX_BIT |
+                                   VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(struct cloud_pc), &push_constant);
 
             VkDeviceSize offsets[] = {0};
 
