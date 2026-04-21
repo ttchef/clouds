@@ -31,40 +31,19 @@ layout (set = 0, binding = GLOBAL_DESC_SHADOW_SPOT_BINDING) uniform sampler2D u_
 
 layout (set = 0, binding = GLOBAL_DESC_SKYBOX_BINDING) uniform samplerCube skybox;
 
-layout (push_constant) uniform Push {
-    mat4 model;
-    vec4 view_pos;
-    uint texture_index;
-} pc;
-
 layout (location = 0) out vec4 out_color;
 
 void main() {
     float gamma = 2.2;
-    vec3 light_out = vec3(0.0);
 
     vec3 normal = normalize(in_normal);
-    vec3 view_dir = normalize(pc.view_pos.xyz - in_world_pos);
-    vec4 tex_sample = texture(in_textures[nonuniformEXT(pc.texture_index)], in_uv);
-    vec3 color = pow(tex_sample.xyz, vec3(gamma));
-
-    for (int i = 0; i < u_lights.directional_count; i++) {
-        DirLight light = u_lights.directional[i];
-        light_out += calc_dir_light(light, normal, in_world_pos, view_dir, color, u_shadow_directional[nonuniformEXT(light.shadow_index)]);
-    }
-
-    for (int i = 0; i < u_lights.point_count; i++) {
-        light_out += calc_point_light(u_lights.point[i], normal, in_world_pos, view_dir, color);
-    }
-
-    for (int i = 0; i < u_lights.spot_count; i++) {
-        SpotLight light = u_lights.spot[i];
-        light_out += calc_spot_light(light, normal, in_world_pos, view_dir, color, u_shadow_spot[nonuniformEXT(light.shadow_index)]);
-    }
+    vec3 color = pow(vec3(1.0, 0.0, 0.0), vec3(gamma));
 
     // gamma correction
-    light_out = pow(light_out, vec3(1.0 / gamma));
-    out_color = vec4(light_out, tex_sample.w);
+    color = pow(color, vec3(1.0 / gamma));
+
+    out_color = vec4(color, 1.0);
 }
+
 
 

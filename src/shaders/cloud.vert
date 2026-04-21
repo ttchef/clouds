@@ -16,6 +16,8 @@ layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
 
 layout (push_constant) uniform Push {
     mat4 model;
+    vec4 view_pos;
+    uint texture_index;
 } pc;
 
 layout (location = 0) out vec2 out_uv;
@@ -32,4 +34,5 @@ void main() {
     vec4 pos = pc.model * vec4(in_pos, 1.0);
     out_world_pos = pos.xyz;
 }
+
 

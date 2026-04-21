@@ -126,6 +126,9 @@ i32 main(void) {
         renderer_push_model_texture(&c->rctx, (vec3){4.0, 3, -3.0f},
                                     (vec3){1, 1, 1}, glibglob);
 
+        renderer_push_cloud(&c->rctx, (vec3){0, 3, 0}, (vec3){1, 1, 1},
+                            (vec4){0.0f, 1.0f, 0.0f, 1.0f});
+
         renderer_draw(&c->rctx, c->window);
         glfwPollEvents();
     }

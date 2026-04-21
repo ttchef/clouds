@@ -245,6 +245,7 @@ struct model {
 enum {
     DRAW_CMD_TYPE_MODEL_COLOR,
     DRAW_CMD_TYPE_MODEL_TEXTURE,
+    DRAW_CMD_TYPE_CLOUD,
 };
 
 struct draw_cmd {
@@ -266,6 +267,10 @@ struct draw_cmd {
             // doesnt have the texture itself
             texture_id texture;
         } model_texture;
+
+        struct {
+            vec4 color;
+        } cloud;
     };
 };
 
@@ -304,6 +309,7 @@ struct rcontext {
     struct pipeline model_color_pip;
     struct pipeline model_texture_pip;
     struct pipeline skybox_pip;
+    struct pipeline cloud_pip;
 
     struct image skybox;
 
@@ -344,6 +350,9 @@ void renderer_push_model_color(struct rcontext *rctx, vec3 pos, vec3 scale,
 
 void renderer_push_model_texture(struct rcontext *rctx, vec3 pos, vec3 scale,
                                  model_id model);
+
+void renderer_push_cloud(struct rcontext *rctx, vec3 pos, vec3 scale,
+                         vec4 color);
 
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 

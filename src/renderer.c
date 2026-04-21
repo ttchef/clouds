@@ -55,6 +55,10 @@ struct shadow_pc {
     matrix light_space;
 };
 
+struct cloud_pc {
+    matrix model;
+};
+
 // TODO: move out of the renderer
 static bool create_shadow_pipeline(struct rcontext *c,
                                    struct pipeline *pipeline);
@@ -1647,6 +1651,56 @@ static bool create_skybox_pipeline(struct rcontext *c) {
     return true;
 }
 
+static bool create_cloud_pipeline(struct rcontext *c) {
+
+    VkVertexInputBindingDescription binding_desc = {
+        .binding = 0,
+        .stride = sizeof(f32) * 8,
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    VkPushConstantRange push_range = {
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .size = sizeof(struct cloud_pc),
+    };
+
+    VkPipelineLayoutCreateInfo layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &c->descriptors.layout,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &push_range,
+    };
+
+    if (!create_pipeline(c, &c->cloud_pip, "build/spv/cloud-vert.spv",
+                         "build/spv/cloud-frag.spv", binding_desc, attrib_desc,
+                         ARRAY_COUNT(attrib_desc), layout_create_info, false)) {
+        return false;
+    }
+
+    return true;
+}
+
 static bool create_sampler(struct rcontext *c) {
     VkSamplerCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -1967,6 +2021,12 @@ bool renderer_init(struct rcontext *rctx, GLFWwindow *window, i32 n_exts,
 
     LOGM(INFO, "created skybox pipeline");
 
+    if (!create_cloud_pipeline(rctx)) {
+        return false;
+    }
+
+    LOGM(INFO, "created cloud pipeline");
+
     if (!create_frame_data(rctx)) {
         return false;
     }
@@ -2062,6 +2122,17 @@ void renderer_push_model_texture(struct rcontext *c, vec3 pos, vec3 scale,
         .scale = scale,
         .model_texture.id = model,
         .model_texture.texture = NO_TEXTURE, // model has texture
+    };
+
+    push_draw_cmd(c, &cmd);
+}
+
+void renderer_push_cloud(struct rcontext *c, vec3 pos, vec3 scale, vec4 color) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_CLOUD,
+        .pos = pos,
+        .scale = scale,
+        .cloud.color = color,
     };
 
     push_draw_cmd(c, &cmd);
@@ -2210,6 +2281,39 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
                              c->models[cmd->model_texture.id].n_index, 1, 0, 0,
                              0);
         }; break;
+        case DRAW_CMD_TYPE_CLOUD: {
+            if (shadow_pass) {
+                return;
+            }
+
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              c->cloud_pip.handle);
+
+            vkCmdBindDescriptorSets(
+                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                c->cloud_pip.layout, 0, 1, &c->descriptors.sets[c->frame_idx],
+                0, NULL);
+
+            struct cloud_pc push_constant = {
+                .model = model,
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, c->cloud_pip.layout,
+                               VK_SHADER_STAGE_VERTEX_BIT, 0,
+                               sizeof(struct cloud_pc), &push_constant);
+
+            VkDeviceSize offsets[] = {0};
+
+            vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
+                                   &c->models[c->box_id].vertex_buffer.handle,
+                                   offsets);
+            vkCmdBindIndexBuffer(data->cmd_buffer,
+                                 c->models[c->box_id].index_buffer.handle, 0,
+                                 VK_INDEX_TYPE_UINT16);
+
+            vkCmdDrawIndexed(data->cmd_buffer, c->models[c->box_id].n_index, 1,
+                             0, 0, 0);
+        } break;
         }
     }
 
