@@ -19,9 +19,6 @@
 #define NO_TEXTURE -1
 #define NO_LIGHT -1
 
-// total max of different textures to exist
-#define MAX_TEXTURES 1024
-
 struct api_version {
     u32 major;
     u32 minor;
@@ -37,6 +34,7 @@ struct image {
     VkImage handle;
     VkImageView view;
     VmaAllocation alloc;
+    bool cube_map;
 };
 
 struct swapchain {
@@ -108,6 +106,10 @@ struct texture_manager {
 struct dir_light {
     vec3 direction;
     vec3 color;
+
+    matrix transform;
+    u32 shadow_index;
+    struct image map;
     bool valid;
 };
 
@@ -119,6 +121,10 @@ struct point_light {
     f32 constant;
     f32 linear;
     f32 quadratic;
+
+    matrix transform;
+    u32 shadow_index;
+    struct image map;
     bool valid;
 };
 
@@ -134,6 +140,10 @@ struct spot_light {
     f32 constant;
     f32 linear;
     f32 quadratic;
+
+    matrix transform;
+    u32 shadow_index;
+    struct image map;
     bool valid;
 };
 
@@ -142,6 +152,13 @@ struct spot_light {
 struct __attribute__((aligned(16))) gpu_dir_light {
     vec4 direction;
     vec4 color;
+
+    u32 shadow_index;
+    u32 pad0;
+    u32 pad1;
+    u32 pad2;
+
+    matrix transform;
 };
 
 struct __attribute__((aligned(16))) gpu_point_light {
@@ -150,6 +167,13 @@ struct __attribute__((aligned(16))) gpu_point_light {
 
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    u32 shadow_index;
+    u32 pad0;
+    u32 pad1;
+    u32 pad2;
+
+    matrix transform;
 };
 
 struct __attribute__((aligned(16))) gpu_spot_light {
@@ -161,6 +185,13 @@ struct __attribute__((aligned(16))) gpu_spot_light {
     vec4 cut_offs;
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    u32 shadow_index;
+    u32 pad0;
+    u32 pad1;
+    u32 pad2;
+
+    matrix transform;
 };
 
 // watch out for alignement
@@ -183,11 +214,23 @@ struct light_manager {
     struct point_light point[MAX_POINT_LIGHTS];
     struct spot_light spot[MAX_SPOT_LIGHTS];
 
+    u32 directional_counter;
+    u32 spot_counter;
+
+    struct pipeline shadow_pip;
+
     struct light_buffer light_buffer;
+};
+
+struct matrix_ubo_data {
+    matrix proj;
+    matrix view;
+    matrix proj_view;
 };
 
 struct matrix_ubo {
     struct buffer buffers[FRAMES_IN_FLIGHT];
+    struct matrix_ubo_data data;
 };
 
 struct model {
@@ -202,6 +245,7 @@ struct model {
 enum {
     DRAW_CMD_TYPE_MODEL_COLOR,
     DRAW_CMD_TYPE_MODEL_TEXTURE,
+    DRAW_CMD_TYPE_CLOUD,
 };
 
 struct draw_cmd {
@@ -223,6 +267,10 @@ struct draw_cmd {
             // doesnt have the texture itself
             texture_id texture;
         } model_texture;
+
+        struct {
+            vec4 color;
+        } cloud;
     };
 };
 
@@ -260,6 +308,10 @@ struct rcontext {
 
     struct pipeline model_color_pip;
     struct pipeline model_texture_pip;
+    struct pipeline skybox_pip;
+    struct pipeline cloud_pip;
+
+    struct image skybox;
 
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
@@ -298,6 +350,9 @@ void renderer_push_model_color(struct rcontext *rctx, vec3 pos, vec3 scale,
 
 void renderer_push_model_texture(struct rcontext *rctx, vec3 pos, vec3 scale,
                                  model_id model);
+
+void renderer_push_cloud(struct rcontext *rctx, vec3 pos, vec3 scale,
+                         vec4 color);
 
 bool renderer_draw(struct rcontext *rctx, GLFWwindow *window);
 

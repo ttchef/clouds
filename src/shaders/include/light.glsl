@@ -2,10 +2,18 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "../../shader_shared.h"
+#include "shadow.glsl"
 
 struct DirLight {
     vec4 direction;
-    vec4 color;  
+    vec4 color;
+
+    uint shadow_index;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    
+    mat4 transform;
 };
 
 struct PointLight {
@@ -14,6 +22,13 @@ struct PointLight {
 
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+    
+    uint shadow_index;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    
+    mat4 transform;
 };
 
 struct SpotLight {  
@@ -25,11 +40,18 @@ struct SpotLight {
     vec4 cut_offs;
     // where x is constant, y is linear and z is qudratic
     vec4 attenuation;
+
+    uint shadow_index;
+    uint pad0;
+    uint pad1;
+    uint pad2;
+    
+    mat4 transform;
 };
 
 const float ambient_coeff = 0.03;
 
-vec3 calc_dir_light(DirLight light, vec3 normal, vec3 view_dir, vec3 surface_color) {
+vec3 calc_dir_light(DirLight light, vec3 normal, vec3 frag_pos, vec3 view_dir, vec3 surface_color, sampler2D shadow_map) {
     vec3 light_dir = normalize(-light.direction.xyz);
 
     float diff = max(dot(normal, light_dir), 0.0);
@@ -41,7 +63,10 @@ vec3 calc_dir_light(DirLight light, vec3 normal, vec3 view_dir, vec3 surface_col
     vec3 diffiuse = light.color.xyz * diff * surface_color;
     vec3 specular = vec3(1.0) * spec * surface_color;
 
-    return (ambient + diffiuse + specular);
+    vec4 light_space_pos = light.transform * vec4(frag_pos, 1.0);
+    float shadow = calc_shadow(shadow_map, light_space_pos, normal, light_dir);
+
+    return (ambient + (1.0 - shadow) * (diffiuse + specular));
 }
 
 vec3 calc_point_light(PointLight light, vec3 normal, vec3 frag_pos, vec3 view_dir, vec3 surface_color) {
@@ -65,7 +90,7 @@ vec3 calc_point_light(PointLight light, vec3 normal, vec3 frag_pos, vec3 view_di
     return (ambient + diffiuse + specular);
 }
 
-vec3 calc_spot_light(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir, vec3 surface_color) {
+vec3 calc_spot_light(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir, vec3 surface_color, sampler2D shadow_map) {
     vec3 light_dir = normalize(light.pos.xyz - frag_pos);
     float diff = max(dot(normal, light_dir), 0.0);
 
@@ -88,6 +113,9 @@ vec3 calc_spot_light(SpotLight light, vec3 normal, vec3 frag_pos, vec3 view_dir,
     vec3 diffiuse = light.color.xyz * diff * surface_color * attenuation * intensity;
     vec3 specular = light.color.xyz * spec * surface_color * attenuation * intensity;
 
-    return (ambient + diffiuse + specular);
+    vec4 light_space_pos = light.transform * vec4(frag_pos, 1.0);
+    float shadow = calc_shadow(shadow_map, light_space_pos, normal, light_dir);
+
+    return (ambient + (1.0 - shadow) * (diffiuse + specular));
 }
 

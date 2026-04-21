@@ -124,6 +124,8 @@ vec3 math_vec3_norm(vec3 v) {
     return (vec3){v.x / len, v.y / len, v.z / len};
 }
 
+vec3 math_vec3_negate(vec3 v) { return (vec3){-v.x, -v.y, -v.z}; }
+
 vec3 math_vec3_cross(vec3 a, vec3 b) {
     return (vec3){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
                   a.x * b.y - a.y * b.x};
@@ -210,15 +212,32 @@ matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up) {
     return m;
 }
 
-matrix math_matrix_get_perspective(f32 fov_deg, f32 aspect, f32 near, f32 far) {
+matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
+                                f32 near, f32 far) {
+    matrix m = {0};
+
+    m.m[0] = 2.0f / (right - left);
+    m.m[5] = -2.0f / (top - bottom);
+    m.m[10] = -1.0f / (far - near);
+
+    m.m[12] = -(right + left) / (right - left);
+    m.m[13] = (top + bottom) / (top - bottom);
+    m.m[14] = -near / (far - near);
+
+    m.m[15] = 1.0f;
+
+    return m;
+}
+
+matrix math_matrix_perspective(f32 fov_deg, f32 aspect, f32 near, f32 far) {
     f32 fov_rad = fov_deg * (3.14159265f / 180.0f);
     f32 f = 1.0f / tanf(fov_rad / 2.0f);
 
     matrix m = {0};
     m.m[0] = f / aspect;
     m.m[5] = -f;
-    m.m[10] = far / (far - near);
-    m.m[11] = 1.0f;
+    m.m[10] = -far / (far - near);
+    m.m[11] = -1.0f;
     m.m[14] = -(far * near) / (far - near);
     return m;
 }

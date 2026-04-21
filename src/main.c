@@ -21,6 +21,7 @@ void glfw_resize_callback(GLFWwindow *window, i32 w, i32 h) {
 i32 main(void) {
     struct context *c = calloc(sizeof(struct context), 1);
 
+    // glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     if (!glfwInit()) {
         fprintf(stderr, "failed to init glfw\n");
         return 1;
@@ -40,8 +41,10 @@ i32 main(void) {
     u32 n_exts = n_glfw_exts + 1;
     const char *exts[n_exts];
 
+    LOGM(INFO, "GLFW ext count: %d", n_glfw_exts);
     for (u32 i = 0; i < n_glfw_exts; i++) {
         exts[i] = glfw_exts[i];
+        LOGM(INFO, "instance extension: %s", glfw_exts[i]);
     }
     exts[n_glfw_exts] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 
@@ -77,18 +80,12 @@ i32 main(void) {
 
     renderer_set_model_texture(&c->rctx, torus, brick);
 
-    light_id point = renderer_create_point_light(&c->rctx, (vec3){0, 1.5, 0},
-                                                 (vec3){0.7, 0.2, 0.6}, 150.0f);
+    light_id spot = renderer_create_spot_light(
+        &c->rctx, (vec3){0, 1, -1}, (vec3){0, -0.5, -0.5},
+        (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
 
-    light_id spot =
-        renderer_create_spot_light(&c->rctx, (vec3){0, 1, 0}, (vec3){0, 0, -1},
-                                   (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
-
-    light_id static_spot =
-        renderer_create_spot_light(&c->rctx, (vec3){0, 0, 0}, (vec3){0, 0, -1},
-                                   (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
-
-    renderer_set_light_state(&c->rctx, point, true);
+    // light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
+    // (vec3){1.0, 0.0, 0.0});
 
     f32 last_time = 0.0f;
     while (!glfwWindowShouldClose(c->window)) {
@@ -103,14 +100,9 @@ i32 main(void) {
         f32 g = (sin(glfwGetTime() + 1.0f) + 1) * 0.5f;
         f32 b = (sin(glfwGetTime() + 2.0f) + 1) * 0.5f;
 
-        vec3 light_dir = {
-            -c->rctx.cam.direction.x,
-            -c->rctx.cam.direction.y,
-            -c->rctx.cam.direction.z,
-        };
-
-        renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos, light_dir,
-                                   (vec3){r, g, b}, 150.0f, 12.5f, 17.5f);
+        renderer_update_spot_light(&c->rctx, spot, c->rctx.cam.pos,
+                                   c->rctx.cam.direction, (vec3){r, g, b},
+                                   20.0f, 12.5f, 17.5f);
 
         renderer_push_box(&c->rctx, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
                           (vec4){0.2, 0.5, 0.8, 1.0}, wood);
@@ -133,6 +125,9 @@ i32 main(void) {
                                     (vec3){10, 10, 10}, logo);
         renderer_push_model_texture(&c->rctx, (vec3){4.0, 3, -3.0f},
                                     (vec3){1, 1, 1}, glibglob);
+
+        renderer_push_cloud(&c->rctx, (vec3){0, 3, 0}, (vec3){1, 1, 1},
+                            (vec4){0.0f, 1.0f, 0.0f, 1.0f});
 
         renderer_draw(&c->rctx, c->window);
         glfwPollEvents();

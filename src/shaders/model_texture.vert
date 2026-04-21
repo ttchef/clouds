@@ -9,13 +9,13 @@ layout (location = 1) in vec2 in_uv;
 layout (location = 2) in vec3 in_normal;
 
 layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
+    mat4 proj;
+    mat4 view;
     mat4 proj_view;
 } u_matrix;
 
 layout (push_constant) uniform Push {
     mat4 model;
-    vec4 view_pos;
-    uint texture_index;
 } pc;
 
 layout (location = 0) out vec2 out_uv;

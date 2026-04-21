@@ -70,6 +70,7 @@ vec3 math_vec3_mul(vec3 a, vec3 b); // wedge product
 vec3 math_vec3_scale(vec3 v, f32 scalar);
 f32 math_vec3_length(vec3 v);
 vec3 math_vec3_norm(vec3 v);
+vec3 math_vec3_negate(vec3 v);
 vec3 math_vec3_cross(vec3 a, vec3 b);
 
 matrix math_matrix_identity();
@@ -89,10 +90,10 @@ void math_vec3_print(vec3 v);
 void math_vec4_print(vec4 v);
 void math_matrix_print(matrix *m);
 
+// right handed
 matrix math_matrix_orthographic(f32 left, f32 right, f32 bottom, f32 top,
                                 f32 near, f32 far);
-matrix math_matrix_get_orthographic(u32 w, u32 h, matrix *m);
-matrix math_matrix_get_perspective(f32 fov, f32 aspect, f32 near, f32 far);
+matrix math_matrix_perspective(f32 fov, f32 aspect, f32 near, f32 far);
 matrix math_matrix_look_at(vec3 eye, vec3 target, vec3 up);
 
 #endif // CMAHTH_H
