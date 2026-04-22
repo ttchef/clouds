@@ -56,7 +56,7 @@ void main() {
     float gamma = 2.2;
 
     vec3 normal = normalize(in_normal);
-    vec3 color = pow(vec3(1.0, 0.0, 0.0), vec3(gamma));
+    vec3 color = pow(pc.color.xyz, vec3(gamma));
 
     // world space
     vec3 ray_origin_ws = pc.cam_pos.xyz;
@@ -77,10 +77,10 @@ void main() {
         discard;
     }
 
-    float t = max(hit.x, hit.y);
+    float t = max(hit.x, 0.0);
     float end = hit.y;
 
-    float step_size = 0.05;
+    float step_size = 0.005;
 
     vec3 col = vec3(0.0);
     float transmittance = 1.0;
@@ -89,16 +89,14 @@ void main() {
         vec3 p = ray_origin + t * ray_dir;
 
         // TODO: noise density
-        float d = 0.5;
+        float d = 2.0;
 
         // Beer lamber law
         float absorb = exp(-d * step_size);
 
         transmittance *= absorb;
 
-        vec3 light_color = vec3(1.0);
-
-        col += transmittance * d * light_color * step_size;
+        col += transmittance * d * color * step_size;
 
         if (transmittance < 0.01) {
             break;
@@ -106,7 +104,7 @@ void main() {
     }
 
     // gamma correction
-    // color = pow(color, vec3(1.0 / gamma));
+    color = pow(color, vec3(1.0 / gamma));
 
     // out_color = vec4(color, 1.0);
 
