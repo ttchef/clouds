@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <FastNoiseLite/FastNoiseLite.h>
 #include <cgltf/cgltf.h>
 #include <stbi/stb_image.h>
 
@@ -59,6 +60,12 @@ enum {
     CUBE_MAP_Y_NEG,
     CUBE_MAP_Z_POS,
     CUBE_MAP_Z_NEG,
+};
+
+enum {
+    IMAGE_TYPE_2D,
+    IMAGE_TYPE_3D,
+    IMAGE_TYPE_CUBE_MAP,
 };
 
 // push constant
@@ -591,7 +598,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
 
     VkBufferImageCopy region = {0};
     if (cube_face) {
-        if (!image->cube_map) {
+        if (image->type != IMAGE_TYPE_CUBE_MAP) {
             // TODO: add good error handling
             LOGM(ERROR, "trying to copy cube map into non cube image");
         }
@@ -610,7 +617,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
         };
     } else {
         // TODO: add good error handling
-        if (image->cube_map) {
+        if (image->type == IMAGE_TYPE_CUBE_MAP) {
             LOGM(ERROR, "trying to copy normal image into cube map");
         }
 
@@ -682,23 +689,46 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
 
 static bool create_image(struct rcontext *c, struct image *image, u32 width,
                          u32 height, VkFormat fmt, VkImageUsageFlags usage,
-                         bool cube_map) {
+                         i32 type) {
+    VkImageType image_type;
+    VkImageViewType view_type;
+
+    switch (type) {
+    case IMAGE_TYPE_2D:
+        image_type = VK_IMAGE_TYPE_2D;
+        view_type = VK_IMAGE_VIEW_TYPE_2D;
+        break;
+    case IMAGE_TYPE_3D:
+        image_type = VK_IMAGE_TYPE_3D;
+        view_type = VK_IMAGE_VIEW_TYPE_3D;
+        break;
+    case IMAGE_TYPE_CUBE_MAP:
+        image_type = VK_IMAGE_TYPE_2D;
+        view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+        break;
+    default:
+        LOGM(ERROR, "invalid image type");
+        return false;
+    }
+
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
+        .imageType = image_type,
         .extent = (VkExtent3D){width, height, 1},
         .mipLevels = 1,
-        .arrayLayers = cube_map ? 6 : 1,
+        .arrayLayers = (type == IMAGE_TYPE_CUBE_MAP) ? 6 : 1,
         .format = fmt,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .usage = usage,
-        .flags = cube_map ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0,
+        .flags = (type == IMAGE_TYPE_CUBE_MAP)
+                     ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+                     : 0,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    image->cube_map = cube_map;
+    image->type = type;
 
     VmaAllocationCreateInfo alloc_info = {
         .usage = VMA_MEMORY_USAGE_GPU_ONLY,
@@ -713,14 +743,14 @@ static bool create_image(struct rcontext *c, struct image *image, u32 width,
     VkImageViewCreateInfo view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image->handle,
-        .viewType = cube_map ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
+        .viewType = view_type,
         .format = fmt,
         .subresourceRange =
             {
                 .aspectMask = fmt == VK_FORMAT_D32_SFLOAT
                                   ? VK_IMAGE_ASPECT_DEPTH_BIT
                                   : VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = cube_map ? 6 : 1,
+                .layerCount = (type == IMAGE_TYPE_CUBE_MAP) ? 6 : 1,
                 .levelCount = 1,
             },
     };
@@ -830,6 +860,28 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
 
     free(cube_face_data);
     stbi_image_free((void *)data);
+
+    return true;
+}
+
+static bool create_noise_image(struct rcontext *c, struct image *image) {
+    fnl_state noise = fnlCreateState();
+    noise.noise_type = FNL_NOISE_PERLIN;
+
+    const u32 noise_size = 64;
+
+    f32 *data = malloc(noise_size * noise_size * noise_size * sizeof(f32));
+    i32 index = 0;
+
+    for (u32 z = 0; z < noise_size; z++) {
+        for (u32 y = 0; y < noise_size; y++) {
+            for (u32 x = 0; x < noise_size; x++) {
+                data[index++] = fnlGetNoise3D(&noise, x, y, z);
+            }
+        }
+    }
+
+    free(data);
 
     return true;
 }

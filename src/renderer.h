@@ -34,7 +34,7 @@ struct image {
     VkImage handle;
     VkImageView view;
     VmaAllocation alloc;
-    bool cube_map;
+    i32 type;
 };
 
 struct swapchain {
