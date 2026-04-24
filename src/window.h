@@ -24,5 +24,6 @@ void window_deinit(void);
 bool window_should_close(struct window *window);
 void window_create_surface(struct window *window, struct vk_init *init);
 const char **window_get_instance_exts(u32 *n_exts);
+void window_get_size(struct window *windiw, u32 *w, u32 *h);
 
 #endif // WINDOW_H
