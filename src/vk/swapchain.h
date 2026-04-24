@@ -26,6 +26,6 @@ struct vk_swapchain {
 
 bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,
                          u32 w, u32 h);
-void vk_swapchain_destroy(struct vk_swapchain *swapchain);
+void vk_swapchain_destroy(struct vk_init *init, struct vk_swapchain *swapchain);
 
 #endif // VULKAN_SWAPCHAIN_H

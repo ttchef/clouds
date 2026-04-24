@@ -91,7 +91,8 @@ bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,
                             swapchain->imgs);
 
     swapchain->imgs_views = calloc(swapchain->n_imgs, sizeof(VkImageView));
-    swapchain->depth_images = calloc(swapchain->n_imgs, sizeof(struct image));
+    swapchain->depth_images =
+        calloc(swapchain->n_imgs, sizeof(struct vk_image));
 
     for (u32 i = 0; i < swapchain->n_imgs; i++) {
         VkImageViewCreateInfo create_info = {
@@ -120,10 +121,33 @@ bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,
             return false;
         }
 
-        create_image(
-            c, &c->swapchain.depth_images[i], w, h, 1, VK_FORMAT_D32_SFLOAT,
+        vk_image_create(
+            init, &swapchain->depth_images[i], w, h, 1, VK_FORMAT_D32_SFLOAT,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, IMAGE_TYPE_2D);
     }
 
     return true;
+}
+
+void vk_swapchain_destroy(struct vk_init *init,
+                          struct vk_swapchain *swapchain) {
+    if (swapchain->imgs) {
+        free(swapchain->imgs);
+    }
+
+    if (swapchain->imgs_views) {
+        for (u32 i = 0; i < swapchain->n_imgs; i++) {
+            vkDestroyImageView(init->dev, swapchain->imgs_views[i], NULL);
+        }
+        free(swapchain->imgs_views);
+    }
+
+    if (swapchain->depth_images) {
+        for (u32 i = 0; i < swapchain->n_imgs; i++) {
+            vk_image_destroy(init, &swapchain->depth_images[i]);
+        }
+        free(swapchain->depth_images);
+    }
+
+    vkDestroySwapchainKHR(init->dev, swapchain->handle, NULL);
 }

@@ -63,11 +63,3 @@ const char **window_get_instance_exts(u32 *n_exts) {
 
     return exts;
 }
-
-void window_get_size(struct window *window, u32 *w, u32 *h) {
-    i32 width, height;
-    glfwGetWindowSize(window->handle, &width, &height);
-
-    *w = (u32)width;
-    *h = (u32)height;
-}
