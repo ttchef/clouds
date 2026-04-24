@@ -16,8 +16,13 @@ OBJ_FILES := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
 .PHONY: all clean folders shaders
 
-all: folders shaders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o $(OBJ_FILES)
-	$(CC) $(SANITIZE) $(OBJ_FILES) $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o -o $(BUILD_DIR)/main $(LDFLAGS)
+all: folders shaders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o $(BUILD_DIR)/fast_noise_lite.o $(OBJ_FILES)
+	$(CC) $(SANITIZE) $(OBJ_FILES) \
+	$(BUILD_DIR)/vma.o \
+	$(BUILD_DIR)/cgltf.o \
+	$(BUILD_DIR)/stbi.o \
+	$(BUILD_DIR)/fast_noise_lite.o \
+	-o $(BUILD_DIR)/main $(LDFLAGS)
 
 folders:
 	mkdir -p $(BUILD_DIR)
@@ -46,10 +51,13 @@ $(BUILD_DIR)/vma.o: $(LIBS_DIR)/vma/vma.cpp
 $(BUILD_DIR)/cgltf.o: $(LIBS_DIR)/cgltf/cgltf.c
 	gcc -O2 -c $(LIBS_DIR)/cgltf/cgltf.c -o $(BUILD_DIR)/cgltf.o
 
-	
-# CGLTF
+# stbi
 $(BUILD_DIR)/stbi.o: $(LIBS_DIR)/stbi/stb_image.c
 	gcc -O2 -c $(LIBS_DIR)/stbi/stb_image.c -o $(BUILD_DIR)/stbi.o
+	
+# FastNoiseLite
+$(BUILD_DIR)/fast_noise_lite.o: $(LIBS_DIR)/FastNoiseLite/fast_noise_lite.c
+	gcc -O2 -c $(LIBS_DIR)/FastNoiseLite/fast_noise_lite.c -o $(BUILD_DIR)/fast_noise_lite.o
 
 clean:
 	rm -rf build shaders/*.svp

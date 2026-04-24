@@ -1,4 +1,28 @@
-// Strategic removal of legacy TTChef in favor of the new Task Orchestration Module (TOM): execute a staged, feature‑flagged migration that introduces TOM behind a toggle while maintaining runtime compatibility via a TTChefAdapter; perform a comprehensive compatibility audit to inventory and classify all TTChef usages (runtime‑critical, integration points, deprecated, unused) and produce an interface contract that documents behavioral parity, supported edge cases, and performance targets; implement idempotent, rollback‑capable data migration scripts and migration playbooks to guarantee zero‑downtime state transitions; ensure observability parity by instrumenting TOM with structured logs, metrics, and distributed traces, mapping legacy metric names to new telemetry for continuity and alerting; add exhaustive test coverage including unit tests for interface and edge cases, integration tests for adapter and end‑to‑end flows, and load/soak tests to validate throughput, latency, and stability under production patterns, with CI gates enforcing quality; adopt a canary deployment strategy with automated health checks, SLI/SLO monitoring, and automatic rollback criteria, followed by an N‑hour observation window to validate behavior before progressive rollout; plan a deprecation and cleanup phase to remove the feature flag, TTChefAdapter, and TTChef code once stability is confirmed; update all relevant documentation, API changelogs, runbooks, and on‑call playbooks; schedule stakeholder communication checkpoints, a design review, and a post‑mortem with lessons learned; assign clear owners for audit, TOM core, migration, QA, and deployment tasks and track progress across 4–6 sprints with defined deliverables and acceptance criteria.
+// Strategic removal of legacy TTChef in favor of the new Task Orchestration
+// Module (TOM): execute a staged, feature‑flagged migration that introduces TOM
+// behind a toggle while maintaining runtime compatibility via a TTChefAdapter;
+// perform a comprehensive compatibility audit to inventory and classify all
+// TTChef usages (runtime‑critical, integration points, deprecated, unused) and
+// produce an interface contract that documents behavioral parity, supported
+// edge cases, and performance targets; implement idempotent, rollback‑capable
+// data migration scripts and migration playbooks to guarantee zero‑downtime
+// state transitions; ensure observability parity by instrumenting TOM with
+// structured logs, metrics, and distributed traces, mapping legacy metric names
+// to new telemetry for continuity and alerting; add exhaustive test coverage
+// including unit tests for interface and edge cases, integration tests for
+// adapter and end‑to‑end flows, and load/soak tests to validate throughput,
+// latency, and stability under production patterns, with CI gates enforcing
+// quality; adopt a canary deployment strategy with automated health checks,
+// SLI/SLO monitoring, and automatic rollback criteria, followed by an N‑hour
+// observation window to validate behavior before progressive rollout; plan a
+// deprecation and cleanup phase to remove the feature flag, TTChefAdapter, and
+// TTChef code once stability is confirmed; update all relevant documentation,
+// API changelogs, runbooks, and on‑call playbooks; schedule stakeholder
+// communication checkpoints, a design review, and a post‑mortem with lessons
+// learned; assign clear owners for audit, TOM core, migration, QA, and
+// deployment tasks and track progress across 4–6 sprints with defined
+// deliverables and acceptance criteria. (~ by cheesecake)
+
 #include "renderer.h"
 #include <GLFW/glfw3.h>
 #include <stdint.h>
@@ -8,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <FastNoiseLite/FastNoiseLite.h>
 #include <cgltf/cgltf.h>
 #include <stbi/stb_image.h>
 
@@ -37,6 +62,12 @@ enum {
     CUBE_MAP_Z_NEG,
 };
 
+enum {
+    IMAGE_TYPE_2D,
+    IMAGE_TYPE_3D,
+    IMAGE_TYPE_CUBE_MAP,
+};
+
 // push constant
 struct model_color_pc {
     matrix model;
@@ -57,6 +88,9 @@ struct shadow_pc {
 
 struct cloud_pc {
     matrix model;
+    vec4 cam_pos;
+    vec4 color;
+    float time;
 };
 
 // TODO: move out of the renderer
@@ -497,9 +531,15 @@ static bool upload_data_to_buffer(struct rcontext *c, struct buffer *buffer,
 
 static bool upload_data_to_image(struct rcontext *c, struct image *image,
                                  u32 data_size, void *data, u32 width,
-                                 u32 height, VkImageLayout final_layout,
+                                 u32 height, u32 depth,
+                                 VkImageLayout final_layout,
                                  VkAccessFlags dst_access_mask,
                                  i32 *cube_face) {
+    if (depth != 1 && image->type != IMAGE_TYPE_3D) {
+        LOGM(WARN, "image depth is not set to one on two dimensional image");
+        depth = 1;
+    }
+
     VkCommandPool cmd_pool;
     VkCommandBuffer cmd_buffer;
 
@@ -565,7 +605,7 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
 
     VkBufferImageCopy region = {0};
     if (cube_face) {
-        if (!image->cube_map) {
+        if (image->type != IMAGE_TYPE_CUBE_MAP) {
             // TODO: add good error handling
             LOGM(ERROR, "trying to copy cube map into non cube image");
         }
@@ -580,18 +620,18 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
             .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .imageSubresource.baseArrayLayer = face,
             .imageSubresource.layerCount = 1,
-            .imageExtent = (VkExtent3D){width, height, 1},
+            .imageExtent = (VkExtent3D){width, height, depth},
         };
     } else {
         // TODO: add good error handling
-        if (image->cube_map) {
+        if (image->type == IMAGE_TYPE_CUBE_MAP) {
             LOGM(ERROR, "trying to copy normal image into cube map");
         }
 
         region = (VkBufferImageCopy){
             .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .imageSubresource.layerCount = 1,
-            .imageExtent = (VkExtent3D){width, height, 1},
+            .imageExtent = (VkExtent3D){width, height, depth},
         };
     }
 
@@ -655,24 +695,52 @@ static bool upload_data_to_image(struct rcontext *c, struct image *image,
 }
 
 static bool create_image(struct rcontext *c, struct image *image, u32 width,
-                         u32 height, VkFormat fmt, VkImageUsageFlags usage,
-                         bool cube_map) {
+                         u32 height, u32 depth, VkFormat fmt,
+                         VkImageUsageFlags usage, i32 type) {
+    VkImageType image_type;
+    VkImageViewType view_type;
+
+    switch (type) {
+    case IMAGE_TYPE_2D:
+        image_type = VK_IMAGE_TYPE_2D;
+        view_type = VK_IMAGE_VIEW_TYPE_2D;
+        break;
+    case IMAGE_TYPE_3D:
+        image_type = VK_IMAGE_TYPE_3D;
+        view_type = VK_IMAGE_VIEW_TYPE_3D;
+        break;
+    case IMAGE_TYPE_CUBE_MAP:
+        image_type = VK_IMAGE_TYPE_2D;
+        view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+        break;
+    default:
+        LOGM(ERROR, "invalid image type");
+        return false;
+    }
+
+    if (depth != 1 && type != IMAGE_TYPE_3D) {
+        LOGM(WARN, "image depth is not set to one on two dimensional image");
+        depth = 1;
+    }
+
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .extent = (VkExtent3D){width, height, 1},
+        .imageType = image_type,
+        .extent = (VkExtent3D){width, height, depth},
         .mipLevels = 1,
-        .arrayLayers = cube_map ? 6 : 1,
+        .arrayLayers = (type == IMAGE_TYPE_CUBE_MAP) ? 6 : 1,
         .format = fmt,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .usage = usage,
-        .flags = cube_map ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0,
+        .flags = (type == IMAGE_TYPE_CUBE_MAP)
+                     ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+                     : 0,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    image->cube_map = cube_map;
+    image->type = type;
 
     VmaAllocationCreateInfo alloc_info = {
         .usage = VMA_MEMORY_USAGE_GPU_ONLY,
@@ -687,14 +755,14 @@ static bool create_image(struct rcontext *c, struct image *image, u32 width,
     VkImageViewCreateInfo view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image->handle,
-        .viewType = cube_map ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D,
+        .viewType = view_type,
         .format = fmt,
         .subresourceRange =
             {
                 .aspectMask = fmt == VK_FORMAT_D32_SFLOAT
                                   ? VK_IMAGE_ASPECT_DEPTH_BIT
                                   : VK_IMAGE_ASPECT_COLOR_BIT,
-                .layerCount = cube_map ? 6 : 1,
+                .layerCount = (type == IMAGE_TYPE_CUBE_MAP) ? 6 : 1,
                 .levelCount = 1,
             },
     };
@@ -751,9 +819,9 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
 
     i32 face_size = width * 0.25f;
     if (!create_image(
-            c, image, face_size, face_size, VK_FORMAT_R32G32B32A32_SFLOAT,
+            c, image, face_size, face_size, 1, VK_FORMAT_R32G32B32A32_SFLOAT,
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            true)) {
+            IMAGE_TYPE_CUBE_MAP)) {
         stbi_image_free((void *)data);
         return false; // error message already printed in create_image
                       // function
@@ -797,13 +865,45 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
             }
         }
         upload_data_to_image(c, image, size, cube_face_data, face_size,
-                             face_size,
+                             face_size, 1,
                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                              VK_ACCESS_SHADER_READ_BIT, &face);
     }
 
     free(cube_face_data);
     stbi_image_free((void *)data);
+
+    return true;
+}
+
+static bool create_noise_image(struct rcontext *c, struct image *image) {
+    fnl_state noise = fnlCreateState();
+    noise.noise_type = FNL_NOISE_PERLIN;
+    noise.frequency = 0.25f;
+
+    const u32 noise_size = 64;
+
+    u32 data_size = noise_size * noise_size * noise_size * sizeof(f32);
+    f32 *data = malloc(data_size);
+    i32 index = 0;
+
+    for (u32 z = 0; z < noise_size; z++) {
+        for (u32 y = 0; y < noise_size; y++) {
+            for (u32 x = 0; x < noise_size; x++) {
+                data[index++] = fnlGetNoise3D(&noise, x, y, z) * 0.5f + 0.5f;
+            }
+        }
+    }
+
+    create_image(c, image, noise_size, noise_size, noise_size,
+                 VK_FORMAT_R32_SFLOAT,
+                 VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                 IMAGE_TYPE_3D);
+    upload_data_to_image(c, image, data_size, data, noise_size, noise_size,
+                         noise_size, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         VK_ACCESS_SHADER_READ_BIT, NULL);
+
+    free(data);
 
     return true;
 }
@@ -1020,9 +1120,9 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
             return false;
         }
 
-        create_image(c, &c->swapchain.depth_images[i], w, h,
-                     VK_FORMAT_D32_SFLOAT,
-                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
+        create_image(
+            c, &c->swapchain.depth_images[i], w, h, 1, VK_FORMAT_D32_SFLOAT,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, IMAGE_TYPE_2D);
     }
 
     return true;
@@ -1680,7 +1780,7 @@ static bool create_cloud_pipeline(struct rcontext *c) {
     };
 
     VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         .size = sizeof(struct cloud_pc),
     };
 
@@ -1698,6 +1798,28 @@ static bool create_cloud_pipeline(struct rcontext *c) {
         return false;
     }
 
+    // TODO: move out into another function
+    create_noise_image(c, &c->noise);
+
+    VkDescriptorImageInfo image_info = {
+        .sampler = c->sampler,
+        .imageView = c->noise.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pImageInfo = &image_info,
+        .dstBinding = GLOBAL_DESC_NOISE_3D_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = c->descriptors.sets[i];
+        vkUpdateDescriptorSets(c->dev, 1, &write, 0, NULL);
+    }
+
     return true;
 }
 
@@ -1707,7 +1829,7 @@ static bool create_sampler(struct rcontext *c) {
         .magFilter = VK_FILTER_NEAREST,
         .minFilter = VK_FILTER_NEAREST,
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeV = create_info.addressModeU,
         .addressModeW = create_info.addressModeU,
         .mipLodBias = 0.0f,
@@ -1735,6 +1857,9 @@ static bool create_global_desc(struct rcontext *c) {
                     FRAMES_IN_FLIGHT +
 
                 // skybox
+                FRAMES_IN_FLIGHT +
+
+                // noise
                 FRAMES_IN_FLIGHT,
         },
         {
@@ -1782,6 +1907,10 @@ static bool create_global_desc(struct rcontext *c) {
 
         {GLOBAL_DESC_SKYBOX_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
          1, VK_SHADER_STAGE_FRAGMENT_BIT, 0},
+
+        {GLOBAL_DESC_NOISE_3D_BINDING,
+         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+         VK_SHADER_STAGE_FRAGMENT_BIT, 0},
     };
 
     VkDescriptorBindingFlags binding_flags[] = {
@@ -1791,6 +1920,7 @@ static bool create_global_desc(struct rcontext *c) {
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
         VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT,
+        0,
         0,
     };
 
@@ -2296,11 +2426,16 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
 
             struct cloud_pc push_constant = {
                 .model = model,
+                .cam_pos =
+                    (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
+                .color = cmd->cloud.color,
+                .time = glfwGetTime(),
             };
 
             vkCmdPushConstants(data->cmd_buffer, c->cloud_pip.layout,
-                               VK_SHADER_STAGE_VERTEX_BIT, 0,
-                               sizeof(struct cloud_pc), &push_constant);
+                               VK_SHADER_STAGE_VERTEX_BIT |
+                                   VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(struct cloud_pc), &push_constant);
 
             VkDeviceSize offsets[] = {0};
 
@@ -2759,11 +2894,11 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
         .valid = true,
     };
 
-    create_image(c, &res.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
+    create_image(c, &res.image, width, height, 1, VK_FORMAT_R8G8B8A8_SRGB,
                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                 false);
+                 IMAGE_TYPE_2D);
     upload_data_to_image(c, &res.image, width * height * 4, data, width, height,
-                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                         1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT, NULL);
 
     // TODO: better datastructure ???
@@ -3033,11 +3168,11 @@ bool renderer_set_model_texture(struct rcontext *c, model_id model,
 // only for directional lights right now
 static u32 create_shadow_map(struct rcontext *c, struct image *image,
                              u32 binding, u32 *counter) {
-    create_image(c, image, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE,
+    create_image(c, image, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1,
                  VK_FORMAT_D32_SFLOAT,
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                      VK_IMAGE_USAGE_SAMPLED_BIT,
-                 false);
+                 IMAGE_TYPE_2D);
 
     VkDescriptorImageInfo image_info = {
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
