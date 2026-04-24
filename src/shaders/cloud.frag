@@ -36,6 +36,7 @@ layout (push_constant) uniform Push {
     mat4 model;
     vec4 cam_pos;
     vec4 color;
+    float time;
 } pc;
 
 layout (location = 0) out vec4 out_color;
@@ -55,9 +56,15 @@ vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
 
 float sample_density(vec3 p) {
     vec3 uvw = (p + 1.0) * 0.5;
-    float d = texture(u_noise, uvw).r;
 
-    // float d = clamp(sin(p.x * 1) * cos(p.y * 2) * tan(p.z * 3) + 0.8, 0.0, 2.0);
+    vec3 wind0 = vec3(0.05, 0.0, 0.02);
+    vec3 wind1 = vec3(-0.02, 0.0, 0.04);
+        
+    float d = 0.0;
+
+    d += 0.6 * texture(u_noise, uvw * 0.5 + wind0 * pc.time * 2.0).r;
+    d += 0.3 * texture(u_noise, uvw * 1.0 + wind1 * pc.time * 1.5).r;
+    d += 0.1 * texture(u_noise, uvw * 2.0 - wind0 * pc.time * 5.5).r;
     
     return d;
 }

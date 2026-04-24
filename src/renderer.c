@@ -90,6 +90,7 @@ struct cloud_pc {
     matrix model;
     vec4 cam_pos;
     vec4 color;
+    float time;
 };
 
 // TODO: move out of the renderer
@@ -878,7 +879,7 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
 static bool create_noise_image(struct rcontext *c, struct image *image) {
     fnl_state noise = fnlCreateState();
     noise.noise_type = FNL_NOISE_PERLIN;
-    noise.frequency = 0.05f;
+    noise.frequency = 0.25f;
 
     const u32 noise_size = 64;
 
@@ -893,9 +894,6 @@ static bool create_noise_image(struct rcontext *c, struct image *image) {
             }
         }
     }
-
-    LOGM(INFO, "noise sample [0]=%f [100]=%f [1000]=%f", data[0], data[100],
-         data[1000]);
 
     create_image(c, image, noise_size, noise_size, noise_size,
                  VK_FORMAT_R32_SFLOAT,
@@ -1831,7 +1829,7 @@ static bool create_sampler(struct rcontext *c) {
         .magFilter = VK_FILTER_NEAREST,
         .minFilter = VK_FILTER_NEAREST,
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeV = create_info.addressModeU,
         .addressModeW = create_info.addressModeU,
         .mipLodBias = 0.0f,
@@ -2431,6 +2429,7 @@ void render_draw_cmds(struct rcontext *c, struct frame_data *data,
                 .cam_pos =
                     (vec4){c->cam.pos.x, c->cam.pos.y, c->cam.pos.z, 0.0},
                 .color = cmd->cloud.color,
+                .time = glfwGetTime(),
             };
 
             vkCmdPushConstants(data->cmd_buffer, c->cloud_pip.layout,
