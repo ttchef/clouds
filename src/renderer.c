@@ -809,7 +809,7 @@ static bool create_cube_map(struct rcontext *c, struct image *image,
     if (!create_image(
             c, image, face_size, face_size, VK_FORMAT_R32G32B32A32_SFLOAT,
             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            true)) {
+            IMAGE_TYPE_CUBE_MAP)) {
         stbi_image_free((void *)data);
         return false; // error message already printed in create_image
                       // function
@@ -1098,9 +1098,9 @@ static bool create_swapchain(struct rcontext *c, u32 w, u32 h) {
             return false;
         }
 
-        create_image(c, &c->swapchain.depth_images[i], w, h,
-                     VK_FORMAT_D32_SFLOAT,
-                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, false);
+        create_image(
+            c, &c->swapchain.depth_images[i], w, h, VK_FORMAT_D32_SFLOAT,
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, IMAGE_TYPE_2D);
     }
 
     return true;
@@ -2843,7 +2843,7 @@ static texture_id create_texture(struct rcontext *c, u32 width, u32 height,
 
     create_image(c, &res.image, width, height, VK_FORMAT_R8G8B8A8_SRGB,
                  VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                 false);
+                 IMAGE_TYPE_2D);
     upload_data_to_image(c, &res.image, width * height * 4, data, width, height,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT, NULL);
@@ -3119,7 +3119,7 @@ static u32 create_shadow_map(struct rcontext *c, struct image *image,
                  VK_FORMAT_D32_SFLOAT,
                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                      VK_IMAGE_USAGE_SAMPLED_BIT,
-                 false);
+                 IMAGE_TYPE_2D);
 
     VkDescriptorImageInfo image_info = {
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
