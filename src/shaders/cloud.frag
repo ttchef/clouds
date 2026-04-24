@@ -29,7 +29,8 @@ layout (set = 0, binding = GLOBAL_DESC_SHADOW_DIRECTIONAL_BINDING) uniform sampl
 layout (set = 0, binding = GLOBAL_DESC_SHADOW_POINT_BINDING) uniform sampler2D u_shadow_point[MAX_POINT_LIGHTS];
 layout (set = 0, binding = GLOBAL_DESC_SHADOW_SPOT_BINDING) uniform sampler2D u_shadow_spot[MAX_SPOT_LIGHTS];
 
-layout (set = 0, binding = GLOBAL_DESC_SKYBOX_BINDING) uniform samplerCube skybox;
+layout (set = 0, binding = GLOBAL_DESC_SKYBOX_BINDING) uniform samplerCube u_skybox;
+layout (set = 0, binding = GLOBAL_DESC_NOISE_3D_BINDING) uniform sampler3D u_noise;
 
 layout (push_constant) uniform Push {
     mat4 model;
@@ -50,6 +51,15 @@ vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
     float exit = min(min(tmax.x, tmax.y), tmax.z);
 
     return vec2(entry, exit);
+}
+
+float sample_density(vec3 p) {
+    vec3 uvw = (p + 1.0) * 0.5;
+    float d = texture(u_noise, uvw).r;
+
+    // float d = clamp(sin(p.x * 1) * cos(p.y * 2) * tan(p.z * 3) + 0.8, 0.0, 2.0);
+    
+    return d;
 }
 
 void main() {
@@ -89,7 +99,7 @@ void main() {
         vec3 p = ray_origin + t * ray_dir;
 
         // TODO: noise density
-        float d = 2.0;
+        float d = sample_density(p);
 
         // Beer lamber law
         float absorb = exp(-d * step_size);

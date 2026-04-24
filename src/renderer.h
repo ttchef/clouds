@@ -312,6 +312,7 @@ struct rcontext {
     struct pipeline cloud_pip;
 
     struct image skybox;
+    struct image noise;
 
     VkCommandPool cmd_pool;
     struct frame_data frame_data[FRAMES_IN_FLIGHT];
