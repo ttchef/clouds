@@ -11,6 +11,18 @@ static void error_callback(i32 error, const char *description) {
     LOGM(ERROR, "glfw error (%d): %s", error, description);
 }
 
+void glfw_resize_callback(GLFWwindow *glfw_window, i32 w, i32 h) {
+    struct window *window = glfwGetWindowUserPointer(glfw_window);
+    if (window->resize) {
+        window->resize(window, (u32)w, (u32)h);
+    } else {
+        LOGM(WARN, "window resize but no resize callback set");
+    }
+
+    window->width = (u32)w;
+    window->height = (u32)h;
+}
+
 bool window_init(void) {
     glfwSetErrorCallback(error_callback);
 
@@ -33,6 +45,9 @@ bool window_create(struct window *window, u32 width, u32 height,
         LOGM(ERROR, "failed to create glfw window");
         return false;
     }
+
+    glfwSetWindowUserPointer(window->handle, window);
+    glfwSetWindowSizeCallback(window->handle, glfw_resize_callback);
 
     window->width = width;
     window->height = height;
@@ -65,3 +80,14 @@ const char **window_get_instance_exts(u32 *n_exts) {
 }
 
 f32 window_get_time() { return glfwGetTime(); }
+
+void window_set_resize_callback(struct window *window,
+                                window_resize_callback_pfn func) {
+    window->resize = func;
+}
+
+void window_set_user_ptr(struct window *window, void *ptr) {
+    window->user_ptr = ptr;
+}
+
+void *window_get_user_ptr(struct window *window) { return window->user_ptr; }

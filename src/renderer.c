@@ -376,12 +376,11 @@ void renderer_deint(struct renderer *r) {
     deinit_vk(&r->init);
 }
 
-static bool resize(struct renderer *r, struct window *window) {
+bool renderer_resize(struct renderer *r, u32 width, u32 height) {
     vkDeviceWaitIdle(r->init.dev);
 
     vk_swapchain_destroy(&r->init, &r->swapchain);
-    if (!vk_swapchain_create(&r->init, &r->swapchain, window->width,
-                             window->height)) {
+    if (!vk_swapchain_create(&r->init, &r->swapchain, width, height)) {
         return false;
     }
 
@@ -389,7 +388,7 @@ static bool resize(struct renderer *r, struct window *window) {
 }
 
 bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
-    if (!resize(r, window)) {
+    if (!renderer_resize(r, window->width, window->height)) {
         LOGM(ERROR, "swapchain resize failed");
         return false;
     }
@@ -411,7 +410,7 @@ bool renderer_draw(struct renderer *r, struct window *window) {
                                          UINT64_MAX, data->image_available,
                                          VK_NULL_HANDLE, &r->swapchain.img_idx);
     if (res == VK_ERROR_OUT_OF_DATE_KHR) {
-        resize(r, window);
+        renderer_resize(r, window->width, window->height);
         return true; // no error
     } else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) {
         LOGM(ERROR, "failed to acquire swapchain image");

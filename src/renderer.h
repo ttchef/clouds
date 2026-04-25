@@ -49,6 +49,8 @@ bool renderer_init(struct renderer *r, struct window *window);
 
 void renderer_deint(struct renderer *r);
 
+bool renderer_resize(struct renderer *r, u32 width, u32 height);
+
 bool renderer_update(struct renderer *r, struct window *window, f32 dt);
 
 bool renderer_draw(struct renderer *r, struct window *window);
