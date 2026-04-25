@@ -45,4 +45,6 @@ void window_set_user_ptr(struct window *window, void *ptr);
 
 void *window_get_user_ptr(struct window *window);
 
+void window_poll_events();
+
 #endif // WINDOW_H

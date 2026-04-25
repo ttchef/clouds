@@ -24,7 +24,10 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
+#include "model.h"
+#include "vk/matrix_ubo.h"
 #include <darray.h>
+#include <full_types.h>
 #include <log.h>
 #include <renderer.h>
 
@@ -356,14 +359,23 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     LOGM(INFO, "created vulkan command resources");
 
+    if (!vk_matrix_ubo_create(r, &r->matrix_ubo)) {
+        return false;
+    }
+
+    LOGM(INFO, "created matrix uniform buffer");
+
+    draw_init(&r->render_queue);
     camera_init(&r->camera);
 
     r->models = darrayCreate(struct model);
+    model_create_file(r, "assets/models/box.glb");
 
     return true;
 }
 
 void renderer_deint(struct renderer *r) {
+    vk_matrix_ubo_destroy(r, &r->matrix_ubo);
     darrayDestroy(r->models);
     destroy_pipelines(r);
 
@@ -388,13 +400,23 @@ bool renderer_resize(struct renderer *r, u32 width, u32 height) {
 }
 
 bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
-    if (!renderer_resize(r, window->width, window->height)) {
-        LOGM(ERROR, "swapchain resize failed");
-        return false;
-    }
-
     light_sync_gpu(r);
     camera_update(&r->camera, window, dt);
+
+    f32 aspect =
+        (f32)r->swapchain.extent.width / (f32)r->swapchain.extent.height;
+    matrix perspective = math_matrix_perspective(50, aspect, 0.1f, 100.0f);
+    matrix view = math_matrix_look_at(
+        r->camera.pos, math_vec3_add(r->camera.pos, r->camera.direction),
+        (vec3){0.0f, 1.0f, 0.0f});
+
+    r->matrix_ubo.data.proj = perspective;
+    r->matrix_ubo.data.view = view;
+
+    // doesnt work when i do it in the shader idk why xD
+    r->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
+
+    vk_matrix_ubo_sync_data(r, &r->matrix_ubo);
 
     return true;
 }

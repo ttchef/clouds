@@ -22,30 +22,9 @@ typedef double f64;
 
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
-#include <cmath.h>
-
-struct model_color_pc {
-    matrix model;
-    vec4 cam_pos;
-    vec4 color;
-};
-
-struct model_texture_pc {
-    matrix model;
-    vec4 cam_pos;
-    u32 texture_index;
-};
-
-struct cloud_pc {
-    matrix model;
-    vec4 cam_pos;
-    vec4 color;
-    float time;
-};
-
-struct shadow_pc {
-    matrix model;
-    matrix light_space;
-};
+struct model_color_pc;
+struct model_texture_pc;
+struct cloud_pc;
+struct shadow_pc;
 
 #endif // TYPES_H

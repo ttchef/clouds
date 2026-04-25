@@ -5,7 +5,7 @@ SHADER_DIR := $(SRC_DIR)/shaders
 BUILD_DIR := build
 SPV_DIR := $(BUILD_DIR)/spv
 
-SANITIZE := #  -fsanitize=address
+SANITIZE :=  -fsanitize=address
 
 CC := gcc
 CFLAGS := -Wall -Wextra -std=c23 -g $(SANITIZE) -I$(LIBS_DIR) -I$(SRC_DIR)

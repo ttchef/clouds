@@ -1,10 +1,17 @@
 
-#include "window.h"
 #include <draw.h>
+#include <full_types.h>
 #include <log.h>
 #include <renderer.h>
 
 #include <string.h>
+
+void draw_init(struct render_queue *render_queue) {
+    render_queue->capacity = 4;
+    render_queue->count = 0;
+    render_queue->cmds =
+        malloc(sizeof(struct draw_cmd) * render_queue->capacity);
+}
 
 static void push_draw_cmd(struct renderer *r, struct draw_cmd *cmd) {
     struct render_queue *q = &r->render_queue;
@@ -168,8 +175,8 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
             if (cmd->model_texture.texture != NO_TEXTURE) {
                 if (texture != NO_TEXTURE) {
                     LOGM(WARN,
-                         "model_texture: %d has two textures one in the "
-                         "model"
+                         "model: %d has two textures one in the "
+                         "model "
                          "and one extern",
                          cmd->model_texture.id);
                 }

@@ -5,6 +5,7 @@
 #include <vk/command.h>
 #include <vk/descriptor.h>
 #include <vk/init.h>
+#include <vk/matrix_ubo.h>
 #include <vk/pipeline.h>
 #include <vk/sampler.h>
 #include <vk/swapchain.h>
@@ -28,6 +29,8 @@ struct renderer {
     struct vk_pipeline cloud_pip;
 
     struct vk_command cmd;
+
+    struct vk_matrix_ubo matrix_ubo;
 
     struct vk_image skybox;
     struct vk_image noise;

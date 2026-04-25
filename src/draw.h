@@ -49,6 +49,8 @@ struct render_queue {
     struct draw_cmd *cmds;
 };
 
+void draw_init(struct render_queue *render_queue);
+
 void draw_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
               texture_id texture);
 

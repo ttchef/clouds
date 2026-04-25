@@ -3,6 +3,7 @@
 #include <vk/init.h>
 
 #include <draw.h>
+#include <full_types.h>
 #include <log.h>
 #include <renderer.h>
 
