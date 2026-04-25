@@ -9,6 +9,7 @@
 #include <vk/sampler.h>
 #include <vk/swapchain.h>
 
+#include <camera.h>
 #include <light.h>
 #include <texture.h>
 #include <window.h>
@@ -26,13 +27,19 @@ struct renderer {
 
     struct vk_command cmd;
 
+    struct vk_image skybox;
+    struct vk_image noise;
+
     struct texture_manager texture_manager;
     struct light_manager light_manager;
+
+    struct camera camera;
 };
 
 bool renderer_init(struct renderer *r, struct window *window);
+
 void renderer_deint(struct renderer *r);
 
-bool renderer_resize(struct renderer *r, struct window *window);
+bool renderer_update(struct renderer *r, struct window *window, f32 dt);
 
 #endif // RENDERER_H
