@@ -16,11 +16,6 @@ struct renderer;
 
 typedef i32 light_id;
 
-struct shadow_pc {
-    matrix model;
-    matrix light_space;
-};
-
 // cpu definition of light
 struct dir_light {
     vec3 direction;

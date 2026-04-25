@@ -63,3 +63,5 @@ const char **window_get_instance_exts(u32 *n_exts) {
 
     return exts;
 }
+
+f32 window_get_time() { return glfwGetTime(); }

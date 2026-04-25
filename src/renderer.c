@@ -24,36 +24,9 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
-#include "camera.h"
-#include "light.h"
-#include "texture.h"
-#include "vk/command.h"
-#include "vk/descriptor.h"
-#include "vk/pipeline.h"
-#include "vk/sampler.h"
-#include "vk/swapchain.h"
+#include <darray.h>
 #include <log.h>
 #include <renderer.h>
-#include <vulkan/vulkan_core.h>
-
-struct model_color_pc {
-    matrix model;
-    vec4 cam_pos;
-    vec4 color;
-};
-
-struct model_texture_pc {
-    matrix model;
-    vec4 cam_pos;
-    u32 texture_index;
-};
-
-struct cloud_pc {
-    matrix model;
-    vec4 cam_pos;
-    vec4 color;
-    float time;
-};
 
 static bool create_model_color_pipeline(struct renderer *r) {
     VkVertexInputBindingDescription binding_desc = {
@@ -385,10 +358,13 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     camera_init(&r->camera);
 
+    r->models = darrayCreate(struct model);
+
     return true;
 }
 
 void renderer_deint(struct renderer *r) {
+    darrayDestroy(r->models);
     destroy_pipelines(r);
 
     light_manager_destroy(r, &r->light_manager);

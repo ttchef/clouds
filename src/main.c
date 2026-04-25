@@ -15,13 +15,19 @@ i32 main(void) {
         return 1;
     }
 
-    struct renderer *r = calloc(sizeof(struct renderer), 1);
+    struct renderer *r = calloc(1, sizeof(struct renderer));
     if (!renderer_init(r, &window)) {
         LOGM(ERROR, "failed to init renderer");
         return 1;
     }
 
+    f32 last_time = window_get_time();
     while (!window_should_close(&window)) {
+        f32 current_time = window_get_time();
+        f32 dt = current_time - last_time;
+        last_time = current_time;
+
+        renderer_update(r, &window, dt);
     }
 
     renderer_deint(r);

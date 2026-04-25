@@ -10,7 +10,9 @@
 #include <vk/swapchain.h>
 
 #include <camera.h>
+#include <draw.h>
 #include <light.h>
+#include <model.h>
 #include <texture.h>
 #include <window.h>
 
@@ -34,6 +36,13 @@ struct renderer {
     struct light_manager light_manager;
 
     struct camera camera;
+
+    // darray (darray.c)
+    struct model *models;
+
+    // model id of a standard 3d cube
+    model_id box_id;
+    struct render_queue render_queue;
 };
 
 bool renderer_init(struct renderer *r, struct window *window);
