@@ -18,4 +18,13 @@ typedef uint64_t u64;
 typedef float f32;
 typedef double f64;
 
+#define FRAMES_IN_FLIGHT 3
+
+#define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
+
+struct model_color_pc;
+struct model_texture_pc;
+struct cloud_pc;
+struct shadow_pc;
+
 #endif // TYPES_H

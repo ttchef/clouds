@@ -5,13 +5,13 @@ SHADER_DIR := $(SRC_DIR)/shaders
 BUILD_DIR := build
 SPV_DIR := $(BUILD_DIR)/spv
 
-SANITIZE := #  -fsanitize=address
+SANITIZE :=  -fsanitize=address
 
 CC := gcc
-CFLAGS := -Wall -Wextra -std=c23 -g $(SANITIZE) -I$(LIBS_DIR)
+CFLAGS := -Wall -Wextra -std=c23 -g $(SANITIZE) -I$(LIBS_DIR) -I$(SRC_DIR)
 LDFLAGS := -lglfw -lvulkan -lstdc++ -lm
 
-SRC_FILES := $(wildcard src/*.c)
+SRC_FILES := $(shell find $(SRC_DIR) -type f -name '*.c') 
 OBJ_FILES := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRC_FILES))
 
 .PHONY: all clean folders shaders
@@ -26,6 +26,7 @@ all: folders shaders $(BUILD_DIR)/vma.o $(BUILD_DIR)/cgltf.o $(BUILD_DIR)/stbi.o
 
 folders:
 	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/vk
 	mkdir -p $(SPV_DIR)
 
 shaders:
