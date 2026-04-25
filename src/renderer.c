@@ -399,3 +399,73 @@ bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
 
     return true;
 }
+
+bool renderer_draw(struct renderer *r, struct window *window) {
+    struct vk_frame_data *data = &r->cmd.frame_data[r->cmd.frame_idx];
+    struct vk_init *init = &r->init;
+
+    vkWaitForFences(init->dev, 1, &data->in_flight_fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(init->dev, 1, &data->in_flight_fence);
+
+    VkResult res = vkAcquireNextImageKHR(init->dev, r->swapchain.handle,
+                                         UINT64_MAX, data->image_available,
+                                         VK_NULL_HANDLE, &r->swapchain.img_idx);
+    if (res == VK_ERROR_OUT_OF_DATE_KHR) {
+        resize(r, window);
+        return true; // no error
+    } else if (res != VK_SUCCESS && res != VK_SUBOPTIMAL_KHR) {
+        LOGM(ERROR, "failed to acquire swapchain image");
+        return false;
+    }
+
+    vkResetCommandBuffer(data->cmd_buffer, 0);
+    vk_command_record(r);
+
+    VkSemaphore wait_semaphors[] = {
+        data->image_available,
+    };
+
+    VkSemaphore signal_semphors[] = {
+        r->swapchain.finished[r->swapchain.img_idx],
+    };
+
+    VkPipelineStageFlags wait_stages[] = {
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+    };
+
+    VkSubmitInfo sub_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &data->cmd_buffer,
+        .waitSemaphoreCount = ARRAY_COUNT(wait_semaphors),
+        .pWaitSemaphores = wait_semaphors,
+        .pWaitDstStageMask = wait_stages,
+        .signalSemaphoreCount = ARRAY_COUNT(signal_semphors),
+        .pSignalSemaphores = signal_semphors,
+    };
+
+    if (vkQueueSubmit(init->graphics_queue.handle, 1, &sub_info,
+                      data->in_flight_fence) != VK_SUCCESS) {
+        LOGM(ERROR, "failed to submit graphics queue");
+        return false;
+    }
+
+    VkPresentInfoKHR present_info = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .swapchainCount = 1,
+        .pSwapchains = &r->swapchain.handle,
+        .pImageIndices = &r->swapchain.img_idx,
+        .waitSemaphoreCount = ARRAY_COUNT(signal_semphors),
+        .pWaitSemaphores = signal_semphors,
+    };
+
+    if (vkQueuePresentKHR(init->graphics_queue.handle, &present_info) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to present graphics queue");
+        return false;
+    }
+
+    r->cmd.frame_idx = (r->cmd.frame_idx + 1) % FRAMES_IN_FLIGHT;
+
+    return true;
+}

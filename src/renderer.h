@@ -51,4 +51,6 @@ void renderer_deint(struct renderer *r);
 
 bool renderer_update(struct renderer *r, struct window *window, f32 dt);
 
+bool renderer_draw(struct renderer *r, struct window *window);
+
 #endif // RENDERER_H

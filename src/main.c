@@ -28,6 +28,7 @@ i32 main(void) {
         last_time = current_time;
 
         renderer_update(r, &window, dt);
+        renderer_draw(r, &window);
     }
 
     renderer_deint(r);

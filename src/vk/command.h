@@ -10,6 +10,7 @@
 #include <vulkan/vulkan.h>
 
 struct vk_init;
+struct renderer;
 
 struct vk_frame_data {
     VkSemaphore image_available;
@@ -25,6 +26,8 @@ struct vk_command {
 };
 
 bool vk_command_create(struct vk_init *init, struct vk_command *cmd);
+
+bool vk_command_record(struct renderer *r);
 
 void vk_command_destroy(struct vk_init *init, struct vk_command *cmd);
 
