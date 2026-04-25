@@ -1,5 +1,7 @@
 
+#include "light.h"
 #include "texture.h"
+#include "vk/command.h"
 #include "vk/descriptor.h"
 #include "vk/sampler.h"
 #include "vk/swapchain.h"
@@ -43,11 +45,23 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     LOGM(INFO, "created texture manager");
 
+    if (!light_manager_create(r, &r->light_manager)) {
+        return false;
+    }
+
+    LOGM(INFO, "created light manager");
+
     if (!create_pipelines(r)) {
         return false;
     }
 
     LOGM(INFO, "created vulkan pipelines");
+
+    if (!vk_command_create(&r->init, &r->cmd)) {
+        return false;
+    }
+
+    LOGM(INFO, "created vulkan command resources");
 
     return true;
 }
@@ -55,6 +69,7 @@ bool renderer_init(struct renderer *r, struct window *window) {
 void renderer_deint(struct renderer *r) {
     destroy_pipelines(r);
 
+    light_manager_destroy(r, &r->light_manager);
     texture_manager_destroy(r, &r->texture_manager);
 
     vk_descriptor_destroy(&r->init, &r->descriptors);

@@ -4,6 +4,7 @@
 
 #include <cmath.h>
 #include <log.h>
+#include <vulkan/vulkan_core.h>
 
 bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,
                          u32 w, u32 h) {
@@ -126,6 +127,21 @@ bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,
             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, IMAGE_TYPE_2D);
     }
 
+    VkSemaphoreCreateInfo sem_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+
+    swapchain->finished = malloc(sizeof(VkSemaphore) * swapchain->n_imgs);
+    for (u32 i = 0; i < swapchain->n_imgs; i++) {
+        if (vkCreateSemaphore(init->dev, &sem_create_info, NULL,
+                              &swapchain->finished[i]) != VK_SUCCESS) {
+            LOGM(ERROR, "failed to create image availabe semaphore: %d", i);
+            return false;
+        }
+    }
+
+    swapchain->img_idx = 0;
+
     return true;
 }
 
@@ -147,6 +163,14 @@ void vk_swapchain_destroy(struct vk_init *init,
             vk_image_destroy(init, &swapchain->depth_images[i]);
         }
         free(swapchain->depth_images);
+    }
+
+    if (swapchain->finished) {
+        for (u32 i = 0; i < swapchain->n_imgs; i++) {
+            vkDestroySemaphore(init->dev, swapchain->finished[i], NULL);
+        }
+
+        free(swapchain->finished);
     }
 
     vkDestroySwapchainKHR(init->dev, swapchain->handle, NULL);

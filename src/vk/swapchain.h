@@ -6,6 +6,7 @@
 #include <vk/image.h>
 
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 struct vk_init;
 
@@ -22,6 +23,9 @@ struct vk_swapchain {
 
     struct vk_image *depth_images;
     u32 n_imgs;
+
+    VkSemaphore *finished;
+    u32 img_idx;
 };
 
 bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,

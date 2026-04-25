@@ -14,6 +14,11 @@ struct vk_pipeline {
     VkPipelineLayout layout;
 };
 
+// TODO: change back to static only needed because of shadow pipeline in light.c
+// right now
+bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
+                             const char *filename);
+
 bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
                         struct vk_pipeline *pipeline, const char *vertex_path,
                         const char *fragment_path,

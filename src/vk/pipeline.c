@@ -5,8 +5,8 @@
 
 #include <log.h>
 
-static bool create_shader_module(struct vk_init *init, VkShaderModule *module,
-                                 const char *filename) {
+bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
+                             const char *filename) {
     FILE *shader_fd = fopen(filename, "rb");
     if (!shader_fd) {
         LOGM(ERROR, "failed to open shader file: %s", filename);
@@ -52,14 +52,14 @@ bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
                         u32 n_attributes,
                         VkPipelineLayoutCreateInfo layout_info, bool skybox) {
     VkShaderModule vert_module;
-    if (!create_shader_module(init, &vert_module, vertex_path)) {
+    if (!vk_shader_module_create(init, &vert_module, vertex_path)) {
         return false;
     }
 
     LOGM(API_DUMP, "created vertex shader module");
 
     VkShaderModule frag_module;
-    if (!create_shader_module(init, &frag_module, fragment_path)) {
+    if (!vk_shader_module_create(init, &frag_module, fragment_path)) {
         return false;
     }
 
