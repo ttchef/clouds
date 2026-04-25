@@ -10,6 +10,27 @@ Lighting:
   - Point lights
   - Spot lights
 
+# Build
+
+Build and run application
+
+```c
+make
+./build/main
+```
+
+Clean source files
+
+```c
+make clean
+```
+
+Clean everything (external libaries)
+
+```c
+make full_clean
+```
+
 # dependencies
 - cgltf
 - glfw
