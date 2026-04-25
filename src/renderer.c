@@ -1,4 +1,5 @@
 
+#include "vk/descriptor.h"
 #include "vk/sampler.h"
 #include "vk/swapchain.h"
 #include <log.h>
@@ -12,8 +13,8 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     LOGM(INFO, "initialized basic vulkan resources");
 
-    if (vk_swapchain_create(&r->init, &r->swapchain, window->width,
-                            window->height)) {
+    if (!vk_swapchain_create(&r->init, &r->swapchain, window->width,
+                             window->height)) {
         return false;
     }
 
@@ -25,10 +26,17 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     LOGM(INFO, "created vulkan samplers");
 
+    if (!vk_descriptor_create(&r->init, &r->descriptors)) {
+        return false;
+    }
+
+    LOGM(INFO, "created descriptor sets");
+
     return true;
 }
 
 void renderer_deint(struct renderer *r) {
+    vk_descriptor_destroy(&r->init, &r->descriptors);
     vk_samplers_destroy(&r->init, &r->samplers);
     vk_swapchain_destroy(&r->init, &r->swapchain);
     deinit_vk(&r->init);

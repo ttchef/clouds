@@ -2,6 +2,7 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include <vk/descriptor.h>
 #include <vk/init.h>
 #include <vk/sampler.h>
 #include <vk/swapchain.h>
@@ -11,6 +12,7 @@ struct renderer {
     struct vk_init init;
     struct vk_swapchain swapchain;
     struct vk_samplers samplers;
+    struct vk_descriptor descriptors;
 };
 
 bool renderer_init(struct renderer *r, struct window *window);

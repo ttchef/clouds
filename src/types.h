@@ -18,6 +18,8 @@ typedef uint64_t u64;
 typedef float f32;
 typedef double f64;
 
+#define FRAMES_IN_FLIGHT 3
+
 #define ARRAY_COUNT(x) (sizeof(x) / sizeof((x)[0]))
 
 #endif // TYPES_H
