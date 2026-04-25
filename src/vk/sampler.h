@@ -8,9 +8,13 @@
 
 struct vk_init;
 
+struct vk_sampler {
+    VkSampler handle;
+};
+
 struct vk_samplers {
     // will add more in the future probaly
-    VkSampler texture_sampler;
+    struct vk_sampler texture_sampler;
 };
 
 bool vk_samplers_create(struct vk_init *init, struct vk_samplers *samplers);

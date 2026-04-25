@@ -4,7 +4,8 @@
 
 #include <log.h>
 
-static bool create_texture_sampler(struct vk_init *init, VkSampler *sampler) {
+static bool create_texture_sampler(struct vk_init *init,
+                                   struct vk_sampler *sampler) {
     VkSamplerCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
         .magFilter = VK_FILTER_NEAREST,
@@ -19,7 +20,8 @@ static bool create_texture_sampler(struct vk_init *init, VkSampler *sampler) {
         .maxLod = 1.0f,
     };
 
-    if (vkCreateSampler(init->dev, &create_info, NULL, sampler) != VK_SUCCESS) {
+    if (vkCreateSampler(init->dev, &create_info, NULL, &sampler->handle) !=
+        VK_SUCCESS) {
         LOGM(ERROR, "failed to create sampler");
         return false;
     }
@@ -36,5 +38,5 @@ bool vk_samplers_create(struct vk_init *init, struct vk_samplers *samplers) {
 }
 
 void vk_samplers_destroy(struct vk_init *init, struct vk_samplers *samplers) {
-    vkDestroySampler(init->dev, samplers->texture_sampler, NULL);
+    vkDestroySampler(init->dev, samplers->texture_sampler.handle, NULL);
 }

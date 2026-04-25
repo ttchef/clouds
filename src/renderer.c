@@ -1,10 +1,15 @@
 
+#include "texture.h"
 #include "vk/descriptor.h"
 #include "vk/sampler.h"
 #include "vk/swapchain.h"
 #include <log.h>
 #include <renderer.h>
 #include <vulkan/vulkan_core.h>
+
+static bool create_pipelines(struct renderer *r) { return true; }
+
+static void destroy_pipelines(struct renderer *r) {}
 
 bool renderer_init(struct renderer *r, struct window *window) {
     if (!init_vk(&r->init, window)) {
@@ -30,12 +35,28 @@ bool renderer_init(struct renderer *r, struct window *window) {
         return false;
     }
 
-    LOGM(INFO, "created descriptor sets");
+    LOGM(INFO, "created vulkan descriptor sets");
+
+    if (!texture_manager_create(r, &r->texture_manager)) {
+        return false;
+    }
+
+    LOGM(INFO, "created texture manager");
+
+    if (!create_pipelines(r)) {
+        return false;
+    }
+
+    LOGM(INFO, "created vulkan pipelines");
 
     return true;
 }
 
 void renderer_deint(struct renderer *r) {
+    destroy_pipelines(r);
+
+    texture_manager_destroy(r, &r->texture_manager);
+
     vk_descriptor_destroy(&r->init, &r->descriptors);
     vk_samplers_destroy(&r->init, &r->samplers);
     vk_swapchain_destroy(&r->init, &r->swapchain);

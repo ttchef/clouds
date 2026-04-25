@@ -4,8 +4,11 @@
 
 #include <vk/descriptor.h>
 #include <vk/init.h>
+#include <vk/pipeline.h>
 #include <vk/sampler.h>
 #include <vk/swapchain.h>
+
+#include <texture.h>
 #include <window.h>
 
 struct renderer {
@@ -13,6 +16,13 @@ struct renderer {
     struct vk_swapchain swapchain;
     struct vk_samplers samplers;
     struct vk_descriptor descriptors;
+
+    struct vk_pipeline model_color_pip;
+    struct vk_pipeline model_texture_pip;
+    struct vk_pipeline skybox_pip;
+    struct vk_pipeline cloud_pip;
+
+    struct texture_manager texture_manager;
 };
 
 bool renderer_init(struct renderer *r, struct window *window);
