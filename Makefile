@@ -33,11 +33,11 @@ all: folders shaders $(LIBS_OBJ_DIR)/vma.o $(LIBS_OBJ_DIR)/cgltf.o $(LIBS_OBJ_DI
 	-o $(BUILD_DIR)/main $(LDFLAGS)
 
 folders:
-	mkdir -p $(BUILD_DIR)
-	mkdir -p $(OBJ_DIR)
-	mkdir -p $(OBJ_DIR)/vk
-	mkdir -p $(LIBS_OBJ_DIR)
-	mkdir -p $(SPV_DIR)
+	@mkdir -p $(BUILD_DIR)
+	@mkdir -p $(OBJ_DIR)
+	@mkdir -p $(OBJ_DIR)/vk
+	@mkdir -p $(LIBS_OBJ_DIR)
+	@mkdir -p $(SPV_DIR)
 
 shaders:
 	@for file in $$(find $(SHADER_DIR)/* -maxdepth 2 -type f); do \
@@ -56,19 +56,19 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 
 # VMA
 $(LIBS_OBJ_DIR)/vma.o: $(LIBS_DIR)/vma/vma.cpp
-	g++ -O2 -c $(LIBS_DIR)/vma/vma.cpp -o $(LIBS_OBJ_DIR)/vma.o
+	@g++ -O2 -c $(LIBS_DIR)/vma/vma.cpp -o $(LIBS_OBJ_DIR)/vma.o
 
 # CGLTF
 $(LIBS_OBJ_DIR)/cgltf.o: $(LIBS_DIR)/cgltf/cgltf.c
-	gcc -O2 -c $(LIBS_DIR)/cgltf/cgltf.c -o $(LIBS_OBJ_DIR)/cgltf.o
+	@gcc -O2 -c $(LIBS_DIR)/cgltf/cgltf.c -o $(LIBS_OBJ_DIR)/cgltf.o
 
 # stbi
 $(LIBS_OBJ_DIR)/stbi.o: $(LIBS_DIR)/stbi/stb_image.c
-	gcc -O2 -c $(LIBS_DIR)/stbi/stb_image.c -o $(LIBS_OBJ_DIR)/stbi.o
+	@gcc -O2 -c $(LIBS_DIR)/stbi/stb_image.c -o $(LIBS_OBJ_DIR)/stbi.o
 	
 # FastNoiseLite
 $(LIBS_OBJ_DIR)/fast_noise_lite.o: $(LIBS_DIR)/FastNoiseLite/fast_noise_lite.c
-	gcc -O2 -c $(LIBS_DIR)/FastNoiseLite/fast_noise_lite.c -o $(LIBS_OBJ_DIR)/fast_noise_lite.o
+	@gcc -O2 -c $(LIBS_DIR)/FastNoiseLite/fast_noise_lite.c -o $(LIBS_OBJ_DIR)/fast_noise_lite.o
 
 # only clear source files
 clean:

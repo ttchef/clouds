@@ -35,4 +35,6 @@ make full_clean
 - cgltf
 - glfw
 - vulkan
+- shaderc
+- FastNoiseLite
 - stbi

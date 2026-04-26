@@ -23,10 +23,11 @@ struct renderer {
     struct vk_samplers samplers;
     struct vk_descriptor descriptors;
 
-    struct vk_pipeline model_color_pip;
-    struct vk_pipeline model_texture_pip;
-    struct vk_pipeline skybox_pip;
-    struct vk_pipeline cloud_pip;
+    struct vk_pipeline_manager pipeline_manager;
+    vk_pipeline_id model_color_pip;
+    vk_pipeline_id model_texture_pip;
+    vk_pipeline_id skybox_pip;
+    vk_pipeline_id cloud_pip;
 
     struct vk_command cmd;
 

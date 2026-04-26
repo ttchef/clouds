@@ -5,6 +5,11 @@
 
 #include <log.h>
 
+#include <string.h>
+#include <sys/stat.h>
+
+#include <vulkan/vulkan_core.h>
+
 bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
                              const char *filename) {
     FILE *shader_fd = fopen(filename, "rb");
@@ -44,41 +49,54 @@ bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
     return true;
 }
 
-bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
-                        struct vk_pipeline *pipeline, const char *vertex_path,
-                        const char *fragment_path,
-                        VkVertexInputBindingDescription binding_decs,
-                        VkVertexInputAttributeDescription *attribute_decs,
-                        u32 n_attributes,
-                        VkPipelineLayoutCreateInfo layout_info, bool skybox) {
-    VkShaderModule vert_module;
-    if (!vk_shader_module_create(init, &vert_module, vertex_path)) {
-        return false;
+vk_pipeline_id vk_pipeline_create(struct vk_init *init,
+                                  struct vk_swapchain *swapchain,
+                                  struct vk_pipeline_manager *manager,
+                                  struct vk_pipeline_desc *desc) {
+    // check if space for the pipeline
+    if (manager->count >= MAX_PIPELINES) {
+        LOGM(ERROR, "not enough space for pipeline increase MAX_PIPELINES");
+        return NO_PIPELINE;
     }
 
-    LOGM(API_DUMP, "created vertex shader module");
+    // max of 2 stages (dont need compute at the moment)
+    VkPipelineShaderStageCreateInfo shader_stages[2];
 
-    VkShaderModule frag_module;
-    if (!vk_shader_module_create(init, &frag_module, fragment_path)) {
-        return false;
-    }
+    // for handling the destroying of the modules
+    VkShaderModule shader_modules[2];
+    u32 shader_stage_index = 0;
 
-    LOGM(API_DUMP, "created fragment shader module");
+    if (desc->vert_path) {
+        if (!vk_shader_module_create(init, &shader_modules[shader_stage_index],
+                                     desc->vert_path)) {
+            return NO_PIPELINE;
+        }
 
-    VkPipelineShaderStageCreateInfo shader_stages[] = {
-        {
+        shader_stages[shader_stage_index] = (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = vert_module,
+            .module = shader_modules[shader_stage_index],
             .pName = "main",
-        },
-        {
+        };
+
+        shader_stage_index++;
+    }
+
+    if (desc->frag_path) {
+        if (!vk_shader_module_create(init, &shader_modules[shader_stage_index],
+                                     desc->frag_path)) {
+            return NO_PIPELINE;
+        }
+
+        shader_stages[shader_stage_index] = (VkPipelineShaderStageCreateInfo){
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = frag_module,
+            .module = shader_modules[shader_stage_index],
             .pName = "main",
-        },
-    };
+        };
+
+        shader_stage_index++;
+    }
 
     VkPipelineRenderingCreateInfo dynamic_rendering = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
@@ -90,10 +108,10 @@ bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
 
     VkPipelineVertexInputStateCreateInfo vertex = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = 1,
-        .pVertexBindingDescriptions = &binding_decs,
-        .vertexAttributeDescriptionCount = n_attributes,
-        .pVertexAttributeDescriptions = attribute_decs,
+        .vertexBindingDescriptionCount = desc->binding_count,
+        .pVertexBindingDescriptions = desc->bindings,
+        .vertexAttributeDescriptionCount = desc->attribute_count,
+        .pVertexAttributeDescriptions = desc->attributes,
     };
 
     VkPipelineInputAssemblyStateCreateInfo assembly = {
@@ -111,9 +129,9 @@ bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .lineWidth = 1.0f,
         .depthClampEnable = VK_FALSE,
-        .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = skybox ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_BACK_BIT,
-        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .polygonMode = desc->polygon_mode,
+        .cullMode = desc->cull_mode,
+        .frontFace = desc->cull_mode,
         .depthBiasEnable = VK_FALSE,
     };
 
@@ -124,30 +142,17 @@ bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
 
     VkPipelineDepthStencilStateCreateInfo depth_stencil = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = VK_TRUE,
-        .depthWriteEnable = skybox ? VK_FALSE : VK_TRUE,
-        .depthCompareOp =
-            skybox ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS,
+        .depthTestEnable = desc->depth_test,
+        .depthWriteEnable = desc->depth_write,
+        .depthCompareOp = desc->depth_compare_op,
         .minDepthBounds = 0.0f,
         .maxDepthBounds = 1.0f,
     };
 
-    VkPipelineColorBlendAttachmentState color_blend_attachment = {
-        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-        .blendEnable = VK_TRUE,
-        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-        .colorBlendOp = VK_BLEND_OP_ADD,
-        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-        .alphaBlendOp = VK_BLEND_OP_ADD,
-    };
-
     VkPipelineColorBlendStateCreateInfo color_blend = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments = &color_blend_attachment,
+        .attachmentCount = desc->blend_attachment_count,
+        .pAttachments = desc->blend_attachment,
     };
 
     VkDynamicState dym_states[] = {
@@ -161,18 +166,32 @@ bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
         .pDynamicStates = dym_states,
     };
 
-    if (vkCreatePipelineLayout(init->dev, &layout_info, NULL,
-                               &pipeline->layout) != VK_SUCCESS) {
+    VkPushConstantRange push_constant_range = {
+        .offset = 0,
+        .size = desc->push_constant_size,
+        .stageFlags = desc->push_constant_stages,
+    };
+
+    VkPipelineLayoutCreateInfo pipeline_layout_create_info = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = desc->descriptor_set_layout_count,
+        .pSetLayouts = desc->descriptor_set_layouts,
+        .pushConstantRangeCount = desc->push_constant_size == 0 ? 0 : 1,
+        .pPushConstantRanges = &push_constant_range,
+    };
+
+    struct vk_pipeline *pip = &manager->entries[manager->count++];
+
+    if (vkCreatePipelineLayout(init->dev, &pipeline_layout_create_info, NULL,
+                               &pip->layout) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create pipeline layout");
         goto error_path;
     }
 
-    LOGM(API_DUMP, "created pipeline layout");
-
     VkGraphicsPipelineCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &dynamic_rendering,
-        .layout = pipeline->layout,
+        .layout = pip->layout,
         .stageCount = ARRAY_COUNT(shader_stages),
         .pStages = shader_stages,
         .pVertexInputState = &vertex,
@@ -187,23 +206,97 @@ bool vk_pipeline_create(struct vk_init *init, struct vk_swapchain *swapchain,
     };
 
     if (vkCreateGraphicsPipelines(init->dev, 0, 1, &create_info, NULL,
-                                  &pipeline->handle) != VK_SUCCESS) {
+                                  &pip->handle) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create graphics pipeline");
         goto error_path;
     }
 
-    vkDestroyShaderModule(init->dev, vert_module, NULL);
-    vkDestroyShaderModule(init->dev, frag_module, NULL);
+    for (u32 i = 0; i < shader_stage_index; i++) {
+        vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
+    }
 
     return true;
 
 error_path:
-    vkDestroyShaderModule(init->dev, vert_module, NULL);
-    vkDestroyShaderModule(init->dev, frag_module, NULL);
+    for (u32 i = 0; i < shader_stage_index; i++) {
+        vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
+    }
     return false;
 }
 
-void vk_pipeline_destroy(struct vk_init *init, struct vk_pipeline *pipeline) {
-    vkDestroyPipeline(init->dev, pipeline->handle, NULL);
-    vkDestroyPipelineLayout(init->dev, pipeline->layout, NULL);
+void vk_pipeline_destroy(struct vk_init *init,
+                         struct vk_pipeline_manager *manager,
+                         vk_pipeline_id id) {
+    if (id < 0 || id >= MAX_PIPELINES) {
+        LOGM(WARN, "pipeline id is invalid: %d", id);
+        return;
+    }
+
+    struct vk_pipeline *p = &manager->entries[id];
+
+    vkDestroyPipeline(init->dev, p->handle, NULL);
+    vkDestroyPipelineLayout(init->dev, p->layout, NULL);
+}
+
+static u64 get_file_mtime(const char *path) {
+    struct stat s;
+    if (stat(path, &s) != 0) {
+        LOGM(WARN, "stat failed: %s", path);
+        return 0;
+    }
+
+    return (u64)s.st_mtime;
+}
+
+void vk_pipeline_manager_check_reload(struct vk_init *init,
+                                      struct vk_pipeline_manager *manager) {
+    for (u32 i = 0; i < manager->count; i++) {
+        struct vk_pipeline *p = &manager->entries[i];
+
+        bool dirty = false;
+        for (u32 j = 0; j < p->shader_count; j++) {
+            struct vk_shader *s = &p->shaders[j];
+
+            u64 mtime = get_file_mtime(s->path);
+            if (mtime != s->last_modified) {
+                dirty = true;
+                s->last_modified = mtime;
+            }
+        }
+
+        if (dirty) {
+            // recompile etc..
+        }
+    }
+}
+
+struct vk_pipeline_desc vk_pipeline_desc_default(void) {
+    return (struct vk_pipeline_desc){
+        .polygon_mode = VK_POLYGON_MODE_FILL,
+        .cull_mode = VK_CULL_MODE_BACK_BIT,
+        .front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+        .depth_test = VK_TRUE,
+        .depth_write = VK_TRUE,
+        .depth_compare_op = VK_COMPARE_OP_LESS,
+    };
+}
+
+bool vk_pipeline_manager_create(struct vk_init *init,
+                                struct vk_pipeline_manager *manager) {
+    memset(manager, 0, sizeof(struct vk_pipeline_manager));
+
+    // piepline cache
+
+    return true;
+}
+
+void vk_pipeline_manager_destroy(struct vk_init *init,
+                                 struct vk_pipeline_manager *manager) {
+    for (u32 i = 0; i < manager->count; i++) {
+        if (!manager->entries[i].valid) {
+            continue;
+        }
+
+        vk_pipeline_destroy(init, manager, i);
+    }
 }
