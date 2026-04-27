@@ -4,6 +4,11 @@
 #include <window.h>
 
 #include <stdlib.h>
+#include <unistd.h>
+
+#ifndef PROJECT_ROOT
+#error "Root directory macro not defined! Use -DPROJECT_ROOT=<root dir>"
+#endif
 
 void resize_callback(struct window *window, u32 width, u32 height) {
     struct renderer *r = window_get_user_ptr(window);
@@ -11,6 +16,8 @@ void resize_callback(struct window *window, u32 width, u32 height) {
 }
 
 i32 main(void) {
+    chdir(PROJECT_ROOT);
+
     if (!window_init()) {
         return 1;
     }

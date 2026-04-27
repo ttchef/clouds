@@ -7,10 +7,17 @@ SPV_DIR := $(BUILD_DIR)/spv
 OBJ_DIR := $(BUILD_DIR)/obj
 LIBS_OBJ_DIR := $(BUILD_DIR)/libs
 
+PROJECT_ROOT := $(shell pwd)
+
 SANITIZE := #-fsanitize=address
 
 CC := gcc
-CFLAGS := -Wall -Wextra -std=c23 -g $(SANITIZE) -I$(LIBS_DIR) -I$(SRC_DIR)
+CFLAGS := -D_GNU_SOURCE \
+		 	-DPROJECT_ROOT=\"$(PROJECT_ROOT)\" \
+		 	-Wall -Wextra -std=c23 \
+		 	-g $(SANITIZE) \
+		 	-I$(LIBS_DIR) -I$(SRC_DIR)
+
 LDFLAGS := -lglfw -lvulkan -lshaderc_shared -lstdc++ -lm
 
 SRC_FILES := $(shell find $(SRC_DIR) -type f -name '*.c') 

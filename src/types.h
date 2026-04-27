@@ -2,6 +2,8 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdbool.h>
 #include <stdint.h>
 

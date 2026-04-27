@@ -17,15 +17,10 @@ struct vk_swapchain;
 typedef i32 vk_pipeline_id;
 
 struct vk_pipeline_desc {
+    // glsl shader files
+    // not spv
     const char *vert_path;
     const char *frag_path;
-
-    // second way of specifying shaders
-    // only used for shader hot reloading
-    // at the moment would be active when
-    // vert_path == NULL or fragment
-    VkShaderModule vert_module;
-    VkShaderModule frag_module;
 
     // vertex input
     VkVertexInputBindingDescription *bindings;
@@ -88,8 +83,6 @@ struct vk_pipeline_manager {
     VkPipelineCache cache;
     struct vk_shader_compiler *compiler;
 };
-
-VkShaderModule vk_shader_module_create(struct vk_init *init, const char *path);
 
 // returns NO_PIPELINE on failure
 vk_pipeline_id vk_pipeline_create(struct vk_init *init,

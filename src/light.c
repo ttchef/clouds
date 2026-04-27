@@ -47,7 +47,7 @@ static vk_pipeline_id create_shadow_pipeline(struct renderer *r) {
 
     struct vk_pipeline_desc desc = vk_pipeline_desc_default();
 
-    desc.vert_path = "build/spv/shadow-vert.spv";
+    desc.vert_path = "src/shaders/shadow.vert";
 
     desc.descriptor_set_layout_count = 1;
     desc.descriptor_set_layouts = &r->descriptors.layout;

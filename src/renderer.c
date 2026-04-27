@@ -87,8 +87,8 @@ static bool create_pipelines(struct renderer *r) {
     desc.descriptor_set_layouts = &r->descriptors.layout;
 
     // custom description
-    desc.vert_path = "build/spv/model_color-vert.spv";
-    desc.frag_path = "build/spv/model_color-frag.spv";
+    desc.vert_path = "src/shaders/model_color.vert";
+    desc.frag_path = "src/shaders/model_color.frag";
 
     desc.push_constant_size = sizeof(struct model_color_pc);
     desc.push_constant_stages =
@@ -102,8 +102,8 @@ static bool create_pipelines(struct renderer *r) {
 
     LOGM(API_DUMP, "created model color pipeline");
 
-    desc.vert_path = "build/spv/model_texture-vert.spv";
-    desc.frag_path = "build/spv/model_texture-frag.spv";
+    desc.vert_path = "src/shaders/model_texture.vert";
+    desc.frag_path = "src/shaders/model_texture.frag";
 
     desc.push_constant_size = sizeof(struct model_texture_pc);
     desc.push_constant_stages =
@@ -117,8 +117,8 @@ static bool create_pipelines(struct renderer *r) {
 
     LOGM(API_DUMP, "created model texture pipeline");
 
-    desc.vert_path = "build/spv/cloud-vert.spv";
-    desc.frag_path = "build/spv/cloud-frag.spv";
+    desc.vert_path = "src/shaders/cloud.vert";
+    desc.frag_path = "src/shaders/cloud.frag";
 
     desc.push_constant_size = sizeof(struct cloud_pc);
     desc.push_constant_stages =
@@ -153,8 +153,8 @@ static bool create_pipelines(struct renderer *r) {
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
 
-    desc.vert_path = "build/spv/skybox-vert.spv";
-    desc.frag_path = "build/spv/skybox-frag.spv";
+    desc.vert_path = "src/shaders/skybox.vert";
+    desc.frag_path = "src/shaders/skybox.frag";
 
     desc.push_constant_size = 0;
 
