@@ -1,4 +1,5 @@
 
+#include <shaderc/status.h>
 #include <vk/init.h>
 #include <vk/pipeline.h>
 #include <vk/swapchain.h>
@@ -8,14 +9,25 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include <shaderc/shaderc.h>
 #include <vulkan/vulkan_core.h>
 
-bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
-                             const char *filename) {
-    FILE *shader_fd = fopen(filename, "rb");
+// total amount of maximun shader stages
+// 2 right now because there is only a maximum
+// of a vertex and a fragment shader
+// no compute tesselation or geometry
+#define MAX_SHADER_STAGES 2
+
+struct vk_shader_compiler {
+    shaderc_compiler_t handle;
+    shaderc_compile_options_t opts;
+};
+
+VkShaderModule vk_shader_module_create(struct vk_init *init, const char *path) {
+    FILE *shader_fd = fopen(path, "rb");
     if (!shader_fd) {
-        LOGM(ERROR, "failed to open shader file: %s", filename);
-        return false;
+        LOGM(ERROR, "failed to open shader file: %s", path);
+        return VK_NULL_HANDLE;
     }
 
     fseek(shader_fd, 0, SEEK_END);
@@ -25,7 +37,7 @@ bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
     if ((shader_size & 0x03) != 0) {
         LOGM(ERROR, "shader compile is not a multiple of 4");
         fclose(shader_fd);
-        return false;
+        return VK_NULL_HANDLE;
     }
 
     // doesnt need to be null terminated because vulkan takes it len based
@@ -40,62 +52,147 @@ bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
         .pCode = (u32 *)shader_str,
     };
 
-    if (vkCreateShaderModule(init->dev, &create_info, NULL, module) !=
+    VkShaderModule module;
+    if (vkCreateShaderModule(init->dev, &create_info, NULL, &module) !=
         VK_SUCCESS) {
-        LOGM(ERROR, "failed to create shader module: %s", filename);
+        LOGM(ERROR, "failed to create shader module: %s", path);
+        return VK_NULL_HANDLE;
+    }
+
+    return module;
+}
+
+static VkShaderModule vk_shader_compile(struct vk_init *init,
+                                        struct vk_pipeline_manager *manager,
+                                        const char *path,
+                                        shaderc_shader_kind kind) {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        LOGM(WARN, "couldnt open: %s", path);
+        return VK_NULL_HANDLE;
+    }
+
+    fseek(f, 0, SEEK_END);
+    size_t len = ftell(f);
+    rewind(f);
+
+    char *buffer = malloc(len + 1);
+
+    fread(buffer, 1, len, f);
+    buffer[len] = '\0';
+
+    fclose(f);
+
+    shaderc_compilation_result_t result =
+        shaderc_compile_into_spv(manager->compiler->handle, buffer, len, kind,
+                                 path, "main", manager->compiler->opts);
+    if (shaderc_result_get_compilation_status(result) !=
+        shaderc_compilation_status_success) {
+        shaderc_result_release(result);
+        LOGM(WARN, "shader compilation failed: %s", path);
+        return VK_NULL_HANDLE;
+    }
+
+    VkShaderModuleCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = shaderc_result_get_length(result),
+        .pCode = (const u32 *)shaderc_result_get_bytes(result),
+    };
+
+    VkShaderModule module;
+    if (vkCreateShaderModule(init->dev, &create_info, NULL, &module) !=
+        VK_SUCCESS) {
+        LOGM(ERROR, "failed to create shader module: %s", path);
+        shaderc_result_release(result);
+        return VK_NULL_HANDLE;
+    }
+
+    shaderc_result_release(result);
+    return module;
+}
+
+static u64 get_file_mtime(const char *path) {
+    struct stat s;
+    if (stat(path, &s) != 0) {
+        LOGM(WARN, "stat failed: %s", path);
+        return 0;
+    }
+
+    return (u64)s.st_mtime;
+}
+
+static bool add_shader_stage(struct vk_pipeline *pip,
+                             VkPipelineShaderStageCreateInfo *shader_stages,
+                             VkShaderModule *shader_modules, u32 *index,
+                             VkShaderModule module, i32 type) {
+    if (*index >= MAX_SHADER_STAGES) {
+        LOGM(WARN, "inavlid index");
         return false;
     }
+
+    u32 i = *index;
+
+    shader_modules[i] = module;
+    shader_stages[i] = (VkPipelineShaderStageCreateInfo){
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .stage = (type == SHADER_TYPE_VERTEX) ? VK_SHADER_STAGE_VERTEX_BIT
+                                              : VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = shader_modules[i],
+        .pName = "main",
+    };
+
+    pip->shaders[i] = (struct vk_shader){
+        .type = type, .last_modified = get_file_mtime(const char *path)};
+
+    (*index)++;
 
     return true;
 }
 
-vk_pipeline_id vk_pipeline_create(struct vk_init *init,
-                                  struct vk_swapchain *swapchain,
-                                  struct vk_pipeline_manager *manager,
-                                  struct vk_pipeline_desc *desc) {
-    // check if space for the pipeline
-    if (manager->count >= MAX_PIPELINES) {
-        LOGM(ERROR, "not enough space for pipeline increase MAX_PIPELINES");
-        return NO_PIPELINE;
+// api call true when called from the outside and not internally
+static struct vk_pipeline build_pipeline(struct vk_init *init,
+                                         struct vk_swapchain *swapchain,
+                                         struct vk_pipeline_desc *desc,
+                                         bool api_call) {
+    struct vk_pipeline res = {0};
+
+    if (api_call) {
+        res.shaders = malloc(sizeof(struct vk_shader) * MAX_SHADER_STAGES);
     }
 
     // max of 2 stages (dont need compute at the moment)
-    VkPipelineShaderStageCreateInfo shader_stages[2];
+    VkPipelineShaderStageCreateInfo shader_stages[MAX_SHADER_STAGES];
 
     // for handling the destroying of the modules
-    VkShaderModule shader_modules[2];
+    VkShaderModule shader_modules[MAX_SHADER_STAGES];
     u32 shader_stage_index = 0;
 
     if (desc->vert_path) {
-        if (!vk_shader_module_create(init, &shader_modules[shader_stage_index],
-                                     desc->vert_path)) {
-            return NO_PIPELINE;
+        VkShaderModule module = vk_shader_module_create(init, desc->vert_path);
+        if (module == VK_NULL_HANDLE) {
+            goto error_path;
         }
 
-        shader_stages[shader_stage_index] = (VkPipelineShaderStageCreateInfo){
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = shader_modules[shader_stage_index],
-            .pName = "main",
-        };
-
-        shader_stage_index++;
+        add_shader_stage(&res, shader_stages, shader_modules,
+                         &shader_stage_index, module, SHADER_TYPE_VERTEX);
+    } else if (desc->vert_module != VK_NULL_HANDLE) {
+        add_shader_stage(&res, shader_stages, shader_modules,
+                         &shader_stage_index, desc->vert_module,
+                         SHADER_TYPE_VERTEX);
     }
 
     if (desc->frag_path) {
-        if (!vk_shader_module_create(init, &shader_modules[shader_stage_index],
-                                     desc->frag_path)) {
-            return NO_PIPELINE;
+        VkShaderModule module = vk_shader_module_create(init, desc->frag_path);
+        if (module == VK_NULL_HANDLE) {
+            goto error_path;
         }
 
-        shader_stages[shader_stage_index] = (VkPipelineShaderStageCreateInfo){
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = shader_modules[shader_stage_index],
-            .pName = "main",
-        };
-
-        shader_stage_index++;
+        add_shader_stage(&res, shader_stages, shader_modules,
+                         &shader_stage_index, module, SHADER_TYPE_FRAGMENT);
+    } else if (desc->frag_module != VK_NULL_HANDLE) {
+        add_shader_stage(&res, shader_stages, shader_modules,
+                         &shader_stage_index, desc->frag_module,
+                         SHADER_TYPE_FRAGMENT);
     }
 
     VkPipelineRenderingCreateInfo dynamic_rendering = {
@@ -182,11 +279,8 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
             desc->push_constant_size == 0 ? NULL : &push_constant_range,
     };
 
-    vk_pipeline_id id = manager->count;
-    struct vk_pipeline *pip = &manager->entries[manager->count++];
-
     if (vkCreatePipelineLayout(init->dev, &pipeline_layout_create_info, NULL,
-                               &pip->layout) != VK_SUCCESS) {
+                               &res.layout) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create pipeline layout");
         goto error_path;
     }
@@ -194,7 +288,7 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
     VkGraphicsPipelineCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &dynamic_rendering,
-        .layout = pip->layout,
+        .layout = res.layout,
         .stageCount = shader_stage_index,
         .pStages = shader_stages,
         .pVertexInputState = &vertex,
@@ -209,7 +303,7 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
     };
 
     if (vkCreateGraphicsPipelines(init->dev, 0, 1, &create_info, NULL,
-                                  &pip->handle) != VK_SUCCESS) {
+                                  &res.handle) != VK_SUCCESS) {
         LOGM(ERROR, "failed to create graphics pipeline");
         goto error_path;
     }
@@ -218,15 +312,36 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
         vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
     }
 
-    pip->valid = true;
+    res.valid = true;
+    res.desc = *desc;
 
-    return id;
+    return res;
 
 error_path:
     for (u32 i = 0; i < shader_stage_index; i++) {
         vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
     }
-    return NO_PIPELINE;
+    return (struct vk_pipeline){0};
+}
+
+vk_pipeline_id vk_pipeline_create(struct vk_init *init,
+                                  struct vk_swapchain *swapchain,
+                                  struct vk_pipeline_manager *manager,
+                                  struct vk_pipeline_desc *desc) {
+    // check if space for the pipeline
+    if (manager->count >= MAX_PIPELINES) {
+        LOGM(ERROR, "not enough space for pipeline increase MAX_PIPELINES");
+        return NO_PIPELINE;
+    }
+
+    vk_pipeline_id id = manager->count;
+    manager->entries[manager->count++] = build_pipeline(init, swapchain, desc);
+    if (!manager->entries[id].valid) {
+        LOGM(ERROR, "pipeline creation failed");
+        return NO_PIPELINE;
+    }
+
+    return id;
 }
 
 void vk_pipeline_destroy(struct vk_init *init,
@@ -243,17 +358,29 @@ void vk_pipeline_destroy(struct vk_init *init,
     vkDestroyPipelineLayout(init->dev, p->layout, NULL);
 }
 
-static u64 get_file_mtime(const char *path) {
-    struct stat s;
-    if (stat(path, &s) != 0) {
-        LOGM(WARN, "stat failed: %s", path);
-        return 0;
+static shaderc_shader_kind kind_from_path(const char *path) {
+    const char *ext = strrchr(path, '-');
+    if (!ext) {
+        LOGM(INFO,
+             "cloudnt detect shader type of: %s inferring from source code",
+             path);
+        return shaderc_glsl_infer_from_source;
     }
 
-    return (u64)s.st_mtime;
+    if (strcmp(ext, "-vert.spv") == 0)
+        return shaderc_vertex_shader;
+    if (strcmp(ext, "-frag.spv") == 0)
+        return shaderc_fragment_shader;
+    if (strcmp(ext, "-comp.vert") == 0)
+        return shaderc_compute_shader;
+
+    LOGM(INFO, "cloudnt detect shader type of: %s inferring from source code",
+         path);
+    return shaderc_glsl_infer_from_source;
 }
 
 void vk_pipeline_manager_check_reload(struct vk_init *init,
+                                      struct vk_swapchain *swapchain,
                                       struct vk_pipeline_manager *manager) {
     for (u32 i = 0; i < manager->count; i++) {
         struct vk_pipeline *p = &manager->entries[i];
@@ -270,7 +397,34 @@ void vk_pipeline_manager_check_reload(struct vk_init *init,
         }
 
         if (dirty) {
-            // recompile etc..
+            VkShaderModule modules[p->shader_count];
+            for (u32 j = 0; j < p->shader_count; j++) {
+                struct vk_shader *s = &p->shaders[j];
+                modules[j] = vk_shader_compile(init, manager, s->path,
+                                               kind_from_path(s->path));
+                if (modules[j] == VK_NULL_HANDLE) {
+                    LOGM(WARN, "failed to hot reload shader: %s", s->path);
+                    continue;
+                }
+
+                switch (s->type) {
+                case SHADER_TYPE_VERTEX: {
+                    p->desc.vert_path = NULL;
+                    p->desc.vert_module = modules[j];
+                } break;
+                case SHADER_TYPE_FRAGMENT: {
+                    p->desc.frag_path = NULL;
+                    p->desc.frag_module = modules[j];
+                } break;
+                }
+            }
+
+            vk_pipeline_id new_pipeline =
+                vk_pipeline_create(init, swapchain, manager, &p->desc);
+            if (new_pipeline == NO_PIPELINE) {
+                LOGM(WARN, "failed to recreate pipeline");
+                return;
+            }
         }
     }
 }
@@ -284,12 +438,24 @@ struct vk_pipeline_desc vk_pipeline_desc_default(void) {
         .depth_write = VK_TRUE,
         .depth_compare_op = VK_COMPARE_OP_LESS,
         .color_attachment_count = 1,
+        .vert_module = VK_NULL_HANDLE,
+        .frag_module = VK_NULL_HANDLE,
     };
 }
 
 bool vk_pipeline_manager_create(struct vk_init *init,
                                 struct vk_pipeline_manager *manager) {
     memset(manager, 0, sizeof(struct vk_pipeline_manager));
+
+    // shader compiler
+    manager->compiler = malloc(sizeof(struct vk_shader_compiler));
+    manager->compiler->handle = shaderc_compiler_initialize();
+    manager->compiler->opts = shaderc_compile_options_initialize();
+
+    // TODO: change to release flags on release builds
+    shaderc_compile_options_set_optimization_level(
+        manager->compiler->opts, shaderc_optimization_level_zero);
+    shaderc_compile_options_set_generate_debug_info(manager->compiler->opts);
 
     // piepline cache
 
@@ -305,6 +471,11 @@ void vk_pipeline_manager_destroy(struct vk_init *init,
 
         vk_pipeline_destroy(init, manager, i);
     }
+
+    // destroy compiler
+    shaderc_compile_options_release(manager->compiler->opts);
+    shaderc_compiler_release(manager->compiler->handle);
+    free(manager->compiler);
 }
 
 struct vk_pipeline *vk_pipeline_manager_get(struct vk_pipeline_manager *manager,

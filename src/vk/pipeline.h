@@ -5,6 +5,7 @@
 #include <types.h>
 
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #define SHADER_MAX_PATH_LEN 256
 #define MAX_PIPELINES 10
@@ -18,6 +19,13 @@ typedef i32 vk_pipeline_id;
 struct vk_pipeline_desc {
     const char *vert_path;
     const char *frag_path;
+
+    // second way of specifying shaders
+    // only used for shader hot reloading
+    // at the moment would be active when
+    // vert_path == NULL or fragment
+    VkShaderModule vert_module;
+    VkShaderModule frag_module;
 
     // vertex input
     VkVertexInputBindingDescription *bindings;
@@ -49,9 +57,15 @@ struct vk_pipeline_desc {
     VkDescriptorSetLayout *descriptor_set_layouts;
 };
 
+enum {
+    SHADER_TYPE_VERTEX,
+    SHADER_TYPE_FRAGMENT,
+};
+
 struct vk_shader {
     char path[SHADER_MAX_PATH_LEN];
     u64 last_modified;
+    i32 type;
 };
 
 struct vk_pipeline {
@@ -64,17 +78,18 @@ struct vk_pipeline {
     bool valid;
 };
 
+// opaque pointer only access in pipeline.c
+struct vk_shader_compiler;
+
 struct vk_pipeline_manager {
     struct vk_pipeline entries[MAX_PIPELINES];
     u32 count;
 
     VkPipelineCache cache;
+    struct vk_shader_compiler *compiler;
 };
 
-// TODO: change back to static only needed because of shadow pipeline in light.c
-// right now
-bool vk_shader_module_create(struct vk_init *init, VkShaderModule *module,
-                             const char *filename);
+VkShaderModule vk_shader_module_create(struct vk_init *init, const char *path);
 
 // returns NO_PIPELINE on failure
 vk_pipeline_id vk_pipeline_create(struct vk_init *init,
@@ -87,6 +102,7 @@ void vk_pipeline_destroy(struct vk_init *init,
                          vk_pipeline_id id);
 
 void vk_pipeline_manager_check_reload(struct vk_init *init,
+                                      struct vk_swapchain *swapchain,
                                       struct vk_pipeline_manager *manager);
 
 struct vk_pipeline_desc vk_pipeline_desc_default(void);
