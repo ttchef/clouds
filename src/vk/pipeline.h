@@ -96,4 +96,7 @@ bool vk_pipeline_manager_create(struct vk_init *init,
 void vk_pipeline_manager_destroy(struct vk_init *init,
                                  struct vk_pipeline_manager *manager);
 
+struct vk_pipeline *vk_pipeline_manager_get(struct vk_pipeline_manager *manager,
+                                            vk_pipeline_id id);
+
 #endif // VULKAN_PIPELINE_H

@@ -300,3 +300,13 @@ void vk_pipeline_manager_destroy(struct vk_init *init,
         vk_pipeline_destroy(init, manager, i);
     }
 }
+
+struct vk_pipeline *vk_pipeline_manager_get(struct vk_pipeline_manager *manager,
+                                            vk_pipeline_id id) {
+    if (id < 0 || id >= MAX_PIPELINES) {
+        LOGM(WARN, "pipeline id is invalid: %d", id);
+        return NULL;
+    }
+
+    return &manager->entries[id];
+}

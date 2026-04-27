@@ -131,7 +131,7 @@ struct light_manager {
     u32 directional_counter;
     u32 spot_counter;
 
-    struct vk_pipeline shadow_pip;
+    vk_pipeline_id shadow_pip;
 
     struct light_buffer light_buffer;
 };
