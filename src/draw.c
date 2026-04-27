@@ -1,4 +1,5 @@
 
+#include "vk/pipeline.h"
 #include <draw.h>
 #include <full_types.h>
 #include <log.h>
@@ -109,24 +110,29 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
         switch (cmd->type) {
         case DRAW_CMD_TYPE_MODEL_COLOR: {
             if (shadow_pass) {
+                struct vk_pipeline *shadow_pip = vk_pipeline_manager_get(
+                    &r->pipeline_manager, r->light_manager.shadow_pip);
+
                 vkCmdBindPipeline(data->cmd_buffer,
                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  r->light_manager.shadow_pip.handle);
+                                  shadow_pip->handle);
 
                 shadow_pc->model = model;
-                vkCmdPushConstants(data->cmd_buffer,
-                                   r->light_manager.shadow_pip.layout,
+                vkCmdPushConstants(data->cmd_buffer, shadow_pip->layout,
                                    VK_SHADER_STAGE_VERTEX_BIT, 0,
                                    sizeof(struct shadow_pc), shadow_pc);
 
                 vkCmdBindDescriptorSets(
                     data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    r->light_manager.shadow_pip.layout, 0, 1,
+                    shadow_pip->layout, 0, 1,
                     &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
             } else {
+                struct vk_pipeline *model_color_pip = vk_pipeline_manager_get(
+                    &r->pipeline_manager, r->model_color_pip);
+
                 vkCmdBindPipeline(data->cmd_buffer,
                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  r->model_color_pip.handle);
+                                  model_color_pip->handle);
 
                 struct model_color_pc push_constant = {
                     .model = model,
@@ -136,13 +142,13 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                 };
 
                 vkCmdPushConstants(
-                    data->cmd_buffer, r->model_color_pip.layout,
+                    data->cmd_buffer, model_color_pip->layout,
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                     0, sizeof(struct model_color_pc), &push_constant);
 
                 vkCmdBindDescriptorSets(
                     data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    r->model_color_pip.layout, 0, 1,
+                    model_color_pip->layout, 0, 1,
                     &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
             }
 
@@ -184,24 +190,29 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
             }
 
             if (shadow_pass) {
+                struct vk_pipeline *shadow_pip = vk_pipeline_manager_get(
+                    &r->pipeline_manager, r->light_manager.shadow_pip);
+
                 vkCmdBindPipeline(data->cmd_buffer,
                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  r->light_manager.shadow_pip.handle);
+                                  shadow_pip->handle);
 
                 shadow_pc->model = model;
-                vkCmdPushConstants(data->cmd_buffer,
-                                   r->light_manager.shadow_pip.layout,
+                vkCmdPushConstants(data->cmd_buffer, shadow_pip->layout,
                                    VK_SHADER_STAGE_VERTEX_BIT, 0,
                                    sizeof(struct shadow_pc), shadow_pc);
 
                 vkCmdBindDescriptorSets(
                     data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    r->light_manager.shadow_pip.layout, 0, 1,
+                    shadow_pip->layout, 0, 1,
                     &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
             } else {
+                struct vk_pipeline *model_texture_pip = vk_pipeline_manager_get(
+                    &r->pipeline_manager, r->model_texture_pip);
+
                 vkCmdBindPipeline(data->cmd_buffer,
                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                  r->model_texture_pip.handle);
+                                  model_texture_pip->handle);
 
                 struct model_texture_pc push_constant = {
                     .model = model,
@@ -211,13 +222,13 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                 };
 
                 vkCmdPushConstants(
-                    data->cmd_buffer, r->model_texture_pip.layout,
+                    data->cmd_buffer, model_texture_pip->layout,
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                     0, sizeof(struct model_texture_pc), &push_constant);
 
                 vkCmdBindDescriptorSets(
                     data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    r->model_texture_pip.layout, 0, 1,
+                    model_texture_pip->layout, 0, 1,
                     &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
             }
 
@@ -241,13 +252,16 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                 return;
             }
 
+            struct vk_pipeline *cloud_pip =
+                vk_pipeline_manager_get(&r->pipeline_manager, r->cloud_pip);
+
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              r->cloud_pip.handle);
+                              cloud_pip->handle);
 
             vkCmdBindDescriptorSets(
                 data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                r->cloud_pip.layout, 0, 1,
-                &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
+                cloud_pip->layout, 0, 1, &r->descriptors.sets[r->cmd.frame_idx],
+                0, NULL);
 
             struct cloud_pc push_constant = {
                 .model = model,
@@ -257,7 +271,7 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                 .time = window_get_time(),
             };
 
-            vkCmdPushConstants(data->cmd_buffer, r->cloud_pip.layout,
+            vkCmdPushConstants(data->cmd_buffer, cloud_pip->layout,
                                VK_SHADER_STAGE_VERTEX_BIT |
                                    VK_SHADER_STAGE_FRAGMENT_BIT,
                                0, sizeof(struct cloud_pc), &push_constant);

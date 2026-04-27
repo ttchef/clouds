@@ -38,6 +38,7 @@ struct vk_pipeline_desc {
     // blending
     VkPipelineColorBlendAttachmentState *blend_attachment;
     u32 blend_attachment_count;
+    u32 color_attachment_count;
 
     // push constant
     u32 push_constant_size;

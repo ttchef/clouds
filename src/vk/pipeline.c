@@ -100,8 +100,9 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
 
     VkPipelineRenderingCreateInfo dynamic_rendering = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount = 1,
-        .pColorAttachmentFormats = &swapchain->fmt,
+        .colorAttachmentCount = desc->color_attachment_count,
+        .pColorAttachmentFormats =
+            desc->color_attachment_count == 0 ? NULL : &swapchain->fmt,
         .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
         .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
     };
@@ -131,7 +132,7 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
         .depthClampEnable = VK_FALSE,
         .polygonMode = desc->polygon_mode,
         .cullMode = desc->cull_mode,
-        .frontFace = desc->cull_mode,
+        .frontFace = desc->front_face,
         .depthBiasEnable = VK_FALSE,
     };
 
@@ -177,9 +178,11 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
         .setLayoutCount = desc->descriptor_set_layout_count,
         .pSetLayouts = desc->descriptor_set_layouts,
         .pushConstantRangeCount = desc->push_constant_size == 0 ? 0 : 1,
-        .pPushConstantRanges = &push_constant_range,
+        .pPushConstantRanges =
+            desc->push_constant_size == 0 ? NULL : &push_constant_range,
     };
 
+    vk_pipeline_id id = manager->count;
     struct vk_pipeline *pip = &manager->entries[manager->count++];
 
     if (vkCreatePipelineLayout(init->dev, &pipeline_layout_create_info, NULL,
@@ -192,7 +195,7 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = &dynamic_rendering,
         .layout = pip->layout,
-        .stageCount = ARRAY_COUNT(shader_stages),
+        .stageCount = shader_stage_index,
         .pStages = shader_stages,
         .pVertexInputState = &vertex,
         .pInputAssemblyState = &assembly,
@@ -215,13 +218,13 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
         vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
     }
 
-    return true;
+    return id;
 
 error_path:
     for (u32 i = 0; i < shader_stage_index; i++) {
         vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
     }
-    return false;
+    return NO_PIPELINE;
 }
 
 void vk_pipeline_destroy(struct vk_init *init,
@@ -278,6 +281,7 @@ struct vk_pipeline_desc vk_pipeline_desc_default(void) {
         .depth_test = VK_TRUE,
         .depth_write = VK_TRUE,
         .depth_compare_op = VK_COMPARE_OP_LESS,
+        .color_attachment_count = 1,
     };
 }
 

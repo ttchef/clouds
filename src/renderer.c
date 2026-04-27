@@ -74,11 +74,9 @@ static bool create_pipelines(struct renderer *r) {
         .alphaBlendOp = VK_BLEND_OP_ADD,
     };
 
+    // general description matching all pipelines
     desc.blend_attachment = &color_blend_attachment;
     desc.blend_attachment_count = 1;
-
-    desc.vert_path = "build/spv/model_color-vert.spv";
-    desc.frag_path = "build/spv/model_color-frag.spv";
 
     desc.bindings = &binding_desc;
     desc.binding_count = 1;
@@ -87,6 +85,10 @@ static bool create_pipelines(struct renderer *r) {
 
     desc.descriptor_set_layout_count = 1;
     desc.descriptor_set_layouts = &r->descriptors.layout;
+
+    // custom description
+    desc.vert_path = "build/spv/model_color-vert.spv";
+    desc.frag_path = "build/spv/model_color-frag.spv";
 
     desc.push_constant_size = sizeof(struct model_color_pc);
     desc.push_constant_stages =
@@ -128,6 +130,29 @@ static bool create_pipelines(struct renderer *r) {
         return false;
     }
 
+    // TODO: move out into another function
+    // cloud noise image
+    vk_image_create_noise(&r->init, &r->noise);
+
+    VkDescriptorImageInfo image_info = {
+        .sampler = r->samplers.texture_sampler.handle,
+        .imageView = r->noise.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pImageInfo = &image_info,
+        .dstBinding = GLOBAL_DESC_NOISE_3D_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = r->descriptors.sets[i];
+        vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
+    }
+
     desc.vert_path = "build/spv/skybox-vert.spv";
     desc.frag_path = "build/spv/skybox-frag.spv";
 
@@ -141,6 +166,30 @@ static bool create_pipelines(struct renderer *r) {
                                        &r->pipeline_manager, &desc);
     if (r->skybox_pip == NO_PIPELINE) {
         return false;
+    }
+
+    // TODO: move out into a good function
+    // skybox cube map
+    vk_image_create_cube_map(&r->init, &r->skybox,
+                             "assets/skyboxes/galaxy.hdr");
+
+    image_info = (VkDescriptorImageInfo){
+        .sampler = r->samplers.texture_sampler.handle,
+        .imageView = r->skybox.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    write = (VkWriteDescriptorSet){
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pImageInfo = &image_info,
+        .dstBinding = GLOBAL_DESC_SKYBOX_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = r->descriptors.sets[i];
+        vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
 
     return true;

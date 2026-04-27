@@ -61,6 +61,12 @@ static vk_pipeline_id create_shadow_pipeline(struct renderer *r) {
     desc.push_constant_size = sizeof(struct shadow_pc);
     desc.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
 
+    desc.blend_attachment_count = 0;
+    desc.color_attachment_count = 0;
+
+    desc.cull_mode = VK_CULL_MODE_FRONT_BIT;
+    desc.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
     return vk_pipeline_create(&r->init, &r->swapchain, &r->pipeline_manager,
                               &desc);
 }
@@ -90,6 +96,9 @@ bool light_manager_create(struct renderer *r, struct light_manager *manager) {
     }
 
     manager->shadow_pip = create_shadow_pipeline(r);
+    if (manager->shadow_pip == NO_PIPELINE) {
+        return false;
+    }
 
     return true;
 }
