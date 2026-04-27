@@ -171,7 +171,7 @@ static bool create_pipelines(struct renderer *r) {
     // TODO: move out into a good function
     // skybox cube map
     vk_image_create_cube_map(&r->init, &r->skybox,
-                             "assets/skyboxes/galaxy.hdr");
+                             "assets/skyboxes/planet.hdr");
 
     image_info = (VkDescriptorImageInfo){
         .sampler = r->samplers.texture_sampler.handle,
@@ -296,6 +296,8 @@ bool renderer_resize(struct renderer *r, u32 width, u32 height) {
 bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
     light_sync_gpu(r);
     camera_update(&r->camera, window, dt);
+    vk_pipeline_manager_check_reload(&r->init, &r->swapchain,
+                                     &r->pipeline_manager);
 
     f32 aspect =
         (f32)r->swapchain.extent.width / (f32)r->swapchain.extent.height;

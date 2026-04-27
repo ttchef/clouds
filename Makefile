@@ -9,7 +9,7 @@ LIBS_OBJ_DIR := $(BUILD_DIR)/libs
 
 PROJECT_ROOT := $(shell pwd)
 
-SANITIZE := #-fsanitize=address
+SANITIZE := -fsanitize=address
 
 CC := gcc
 CFLAGS := -D_GNU_SOURCE \

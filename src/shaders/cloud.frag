@@ -74,6 +74,7 @@ void main() {
 
     vec3 normal = normalize(in_normal);
     vec3 color = pow(pc.color.xyz, vec3(gamma));
+    // vec3 color = pow(vec3(1.0, 0.0, 0.0), vec3(gamma));
 
     // world space
     vec3 ray_origin_ws = pc.cam_pos.xyz;

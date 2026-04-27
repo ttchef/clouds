@@ -217,11 +217,9 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
                                          bool api_call) {
     struct vk_pipeline res = {0};
 
-    if (api_call) {
-        res.shaders = malloc(sizeof(struct vk_shader) * MAX_SHADER_STAGES);
-        res.valid = true;
-        res.desc = *desc;
-    }
+    res.shaders = malloc(sizeof(struct vk_shader) * MAX_SHADER_STAGES);
+    res.valid = true;
+    res.desc = *desc;
 
     // max of 2 stages (dont need compute at the moment)
     VkPipelineShaderStageCreateInfo shader_stages[MAX_SHADER_STAGES];
@@ -231,23 +229,31 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
     u32 shader_stage_index = 0;
 
     if (desc->vert_path) {
+        res.desc.vert_path = strdup(desc->vert_path);
+
         VkShaderModule module =
             shader_compile(init, manager, desc->vert_path, SHADER_TYPE_VERTEX);
         if (module == VK_NULL_HANDLE) {
             goto error_path;
         }
 
+        res.shaders[shader_stage_index] =
+            shader_from_path(desc->vert_path, SHADER_TYPE_VERTEX);
         add_shader_stage(&res, shader_stages, shader_modules,
                          &shader_stage_index, module, SHADER_TYPE_VERTEX);
     }
 
     if (desc->frag_path) {
+        res.desc.frag_path = strdup(desc->frag_path);
+
         VkShaderModule module = shader_compile(init, manager, desc->frag_path,
                                                SHADER_TYPE_FRAGMENT);
         if (module == VK_NULL_HANDLE) {
             goto error_path;
         }
 
+        res.shaders[shader_stage_index] =
+            shader_from_path(desc->frag_path, SHADER_TYPE_FRAGMENT);
         add_shader_stage(&res, shader_stages, shader_modules,
                          &shader_stage_index, module, SHADER_TYPE_FRAGMENT);
     }
@@ -377,6 +383,19 @@ error_path:
     for (u32 i = 0; i < shader_stage_index; i++) {
         vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
     }
+
+    if (res.shaders) {
+        free(res.shaders);
+    }
+
+    if (res.desc.vert_path) {
+        free((void *)res.desc.vert_path);
+    }
+
+    if (res.desc.frag_path) {
+        free((void *)res.desc.frag_path);
+    }
+
     return (struct vk_pipeline){0};
 }
 
@@ -402,6 +421,23 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
     return id;
 }
 
+static void destroy_pipeline(struct vk_init *init, struct vk_pipeline *p) {
+    if (p->desc.vert_path) {
+        free((void *)p->desc.vert_path);
+    }
+
+    if (p->desc.frag_path) {
+        free((void *)p->desc.frag_path);
+    }
+
+    if (p->shaders) {
+        free(p->shaders);
+    }
+
+    vkDestroyPipeline(init->dev, p->handle, NULL);
+    vkDestroyPipelineLayout(init->dev, p->layout, NULL);
+}
+
 void vk_pipeline_destroy(struct vk_init *init,
                          struct vk_pipeline_manager *manager,
                          vk_pipeline_id id) {
@@ -411,9 +447,7 @@ void vk_pipeline_destroy(struct vk_init *init,
     }
 
     struct vk_pipeline *p = &manager->entries[id];
-
-    vkDestroyPipeline(init->dev, p->handle, NULL);
-    vkDestroyPipelineLayout(init->dev, p->layout, NULL);
+    destroy_pipeline(init, p);
 }
 
 void vk_pipeline_manager_check_reload(struct vk_init *init,
@@ -441,11 +475,9 @@ void vk_pipeline_manager_check_reload(struct vk_init *init,
                 return;
             }
 
-            p->handle = new_pipeline.handle;
-            p->layout = new_pipeline.layout;
-
-            vkDestroyPipelineLayout(init->dev, new_pipeline.layout, NULL);
-            vkDestroyPipeline(init->dev, new_pipeline.handle, NULL);
+            vkDeviceWaitIdle(init->dev);
+            destroy_pipeline(init, p);
+            memcpy(p, &new_pipeline, sizeof(struct vk_pipeline));
         }
     }
 }

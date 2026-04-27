@@ -19,8 +19,8 @@ typedef i32 vk_pipeline_id;
 struct vk_pipeline_desc {
     // glsl shader files
     // not spv
-    const char *vert_path;
-    const char *frag_path;
+    char vert_path[SHADER_MAX_PATH_LEN];
+    char frag_path[SHADER_MAX_PATH_LEN];
 
     // vertex input
     VkVertexInputBindingDescription *bindings;
