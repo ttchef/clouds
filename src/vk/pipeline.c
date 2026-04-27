@@ -218,6 +218,8 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
         vkDestroyShaderModule(init->dev, shader_modules[i], NULL);
     }
 
+    pip->valid = true;
+
     return id;
 
 error_path:

@@ -221,6 +221,12 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     LOGM(INFO, "created vulkan descriptor sets");
 
+    if (!vk_pipeline_manager_create(&r->init, &r->pipeline_manager)) {
+        return false;
+    }
+
+    LOGM(INFO, "created pipeline manager");
+
     if (!texture_manager_create(r, &r->texture_manager)) {
         return false;
     }
@@ -232,12 +238,6 @@ bool renderer_init(struct renderer *r, struct window *window) {
     }
 
     LOGM(INFO, "created light manager");
-
-    if (!vk_pipeline_manager_create(&r->init, &r->pipeline_manager)) {
-        return false;
-    }
-
-    LOGM(INFO, "created pipeline manager");
 
     if (!create_pipelines(r)) {
         return false;
@@ -267,6 +267,8 @@ bool renderer_init(struct renderer *r, struct window *window) {
 }
 
 void renderer_deint(struct renderer *r) {
+    vkDeviceWaitIdle(r->init.dev);
+
     vk_matrix_ubo_destroy(r, &r->matrix_ubo);
     darrayDestroy(r->models);
     vk_pipeline_manager_destroy(&r->init, &r->pipeline_manager);
