@@ -88,7 +88,6 @@ struct vk_pipeline_manager {
     struct vk_pipeline entries[MAX_PIPELINES];
     u32 count;
 
-    VkPipelineCache cache;
     struct vk_shader_compiler *compiler;
 };
 
@@ -107,8 +106,7 @@ void vk_pipeline_manager_check_reload(struct vk_init *init,
                                       struct vk_pipeline_manager *manager);
 
 // manager
-bool vk_pipeline_manager_create(struct vk_init *init,
-                                struct vk_pipeline_manager *manager);
+bool vk_pipeline_manager_create(struct vk_pipeline_manager *manager);
 
 void vk_pipeline_manager_destroy(struct vk_init *init,
                                  struct vk_pipeline_manager *manager);

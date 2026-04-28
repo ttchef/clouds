@@ -217,7 +217,7 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     LOGM(INFO, "created vulkan descriptor sets");
 
-    if (!vk_pipeline_manager_create(&r->init, &r->pipeline_manager)) {
+    if (!vk_pipeline_manager_create(&r->pipeline_manager)) {
         return false;
     }
 

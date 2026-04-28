@@ -472,8 +472,7 @@ struct vk_pipeline_desc vk_pipeline_desc_default(void) {
     };
 }
 
-bool vk_pipeline_manager_create(struct vk_init *init,
-                                struct vk_pipeline_manager *manager) {
+bool vk_pipeline_manager_create(struct vk_pipeline_manager *manager) {
     memset(manager, 0, sizeof(struct vk_pipeline_manager));
 
     // shader compiler
@@ -488,8 +487,6 @@ bool vk_pipeline_manager_create(struct vk_init *init,
 
     shaderc_compile_options_set_include_callbacks(
         manager->compiler->opts, include_resolve, include_release, NULL);
-
-    // piepline cache
 
     return true;
 }
