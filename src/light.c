@@ -47,25 +47,18 @@ static vk_pipeline_id create_shadow_pipeline(struct renderer *r) {
 
     struct vk_pipeline_desc desc = vk_pipeline_desc_default();
 
-    desc.vert_path = "src/shaders/shadow.vert";
+    vk_pipeline_set_shaders(&desc, "src/shaders/shadow.vert", NULL);
 
-    desc.descriptor_set_layout_count = 1;
-    desc.descriptor_set_layouts = &r->descriptors.layout;
+    vk_pipeline_set_vertex_input(&desc, &binding_desc, 1, attrib_desc,
+                                 ARRAY_COUNT(attrib_desc));
 
-    desc.binding_count = 1;
-    desc.bindings = &binding_desc;
-
-    desc.attribute_count = ARRAY_COUNT(attrib_desc);
-    desc.attributes = attrib_desc;
-
-    desc.push_constant_size = sizeof(struct shadow_pc);
-    desc.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
-
-    desc.blend_attachment_count = 0;
-    desc.color_attachment_count = 0;
-
-    desc.cull_mode = VK_CULL_MODE_FRONT_BIT;
-    desc.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+    vk_pipeline_set_push_constant(&desc, sizeof(struct shadow_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT);
+    vk_pipeline_set_color_attachment(&desc, 0);
+    vk_pipeline_set_blend_state(&desc, NULL, 0);
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_FRONT_BIT,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
     return vk_pipeline_create(&r->init, &r->swapchain, &r->pipeline_manager,
                               &desc);

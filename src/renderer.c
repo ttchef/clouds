@@ -25,10 +25,12 @@
 // deliverables and acceptance criteria. (~ by cheesecake)
 
 #include "model.h"
+#include "types.h"
 #include "vk/matrix_ubo.h"
 #include "vk/pipeline.h"
 #include <darray.h>
 #include <full_types.h>
+#include <iso646.h>
 #include <log.h>
 #include <renderer.h>
 #include <vulkan/vulkan_core.h>
@@ -75,24 +77,17 @@ static bool create_pipelines(struct renderer *r) {
     };
 
     // general description matching all pipelines
-    desc.blend_attachment = &color_blend_attachment;
-    desc.blend_attachment_count = 1;
-
-    desc.bindings = &binding_desc;
-    desc.binding_count = 1;
-    desc.attributes = attrib_desc;
-    desc.attribute_count = ARRAY_COUNT(attrib_desc);
-
-    desc.descriptor_set_layout_count = 1;
-    desc.descriptor_set_layouts = &r->descriptors.layout;
+    vk_pipeline_set_blend_state(&desc, &color_blend_attachment, 1);
+    vk_pipeline_set_vertex_input(&desc, &binding_desc, 1, attrib_desc,
+                                 ARRAY_COUNT(attrib_desc));
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
 
     // custom description
-    desc.vert_path = "src/shaders/model_color.vert";
-    desc.frag_path = "src/shaders/model_color.frag";
-
-    desc.push_constant_size = sizeof(struct model_color_pc);
-    desc.push_constant_stages =
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    vk_pipeline_set_shaders(&desc, "src/shaders/model_color.vert",
+                            "src/shaders/model_color.frag");
+    vk_pipeline_set_push_constant(&desc, sizeof(struct model_color_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
 
     r->model_color_pip = vk_pipeline_create(&r->init, &r->swapchain,
                                             &r->pipeline_manager, &desc);
@@ -102,12 +97,12 @@ static bool create_pipelines(struct renderer *r) {
 
     LOGM(API_DUMP, "created model color pipeline");
 
-    desc.vert_path = "src/shaders/model_texture.vert";
-    desc.frag_path = "src/shaders/model_texture.frag";
+    vk_pipeline_set_shaders(&desc, "src/shaders/model_texture.vert",
+                            "src/shaders/model_texture.frag");
 
-    desc.push_constant_size = sizeof(struct model_texture_pc);
-    desc.push_constant_stages =
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    vk_pipeline_set_push_constant(&desc, sizeof(struct model_texture_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
 
     r->model_texture_pip = vk_pipeline_create(&r->init, &r->swapchain,
                                               &r->pipeline_manager, &desc);
@@ -117,18 +112,20 @@ static bool create_pipelines(struct renderer *r) {
 
     LOGM(API_DUMP, "created model texture pipeline");
 
-    desc.vert_path = "src/shaders/cloud.vert";
-    desc.frag_path = "src/shaders/cloud.frag";
+    vk_pipeline_set_shaders(&desc, "src/shaders/cloud.vert",
+                            "src/shaders/cloud.frag");
 
-    desc.push_constant_size = sizeof(struct cloud_pc);
-    desc.push_constant_stages =
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    vk_pipeline_set_push_constant(&desc, sizeof(struct cloud_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
 
     r->cloud_pip = vk_pipeline_create(&r->init, &r->swapchain,
                                       &r->pipeline_manager, &desc);
     if (r->cloud_pip == NO_PIPELINE) {
         return false;
     }
+
+    LOGM(API_DUMP, "created cloud pipeline");
 
     // TODO: move out into another function
     // cloud noise image
@@ -153,14 +150,13 @@ static bool create_pipelines(struct renderer *r) {
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
 
-    desc.vert_path = "src/shaders/skybox.vert";
-    desc.frag_path = "src/shaders/skybox.frag";
-
-    desc.push_constant_size = 0;
-
-    desc.cull_mode = VK_CULL_MODE_FRONT_BIT;
-    desc.depth_write = VK_FALSE;
-    desc.depth_compare_op = VK_COMPARE_OP_LESS_OR_EQUAL;
+    vk_pipeline_set_shaders(&desc, "src/shaders/skybox.vert",
+                            "src/shaders/skybox.frag");
+    vk_pipeline_set_push_constant(&desc, 0, 0);
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_FRONT_BIT,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    vk_pipeline_set_depth_state(&desc, VK_FALSE, VK_TRUE,
+                                VK_COMPARE_OP_LESS_OR_EQUAL);
 
     r->skybox_pip = vk_pipeline_create(&r->init, &r->swapchain,
                                        &r->pipeline_manager, &desc);

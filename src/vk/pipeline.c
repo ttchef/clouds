@@ -172,8 +172,7 @@ static u64 get_file_mtime(const char *path) {
     return (u64)s.st_mtime;
 }
 
-static bool add_shader_stage(struct vk_pipeline *pip,
-                             VkPipelineShaderStageCreateInfo *shader_stages,
+static bool add_shader_stage(VkPipelineShaderStageCreateInfo *shader_stages,
                              VkShaderModule *shader_modules, u32 *index,
                              VkShaderModule module, i32 type) {
     if (*index >= MAX_SHADER_STAGES) {
@@ -203,8 +202,8 @@ static struct vk_shader shader_from_path(const char *path, i32 type) {
     res.type = type;
     res.last_modified = get_file_mtime(path);
 
-    memset(res.path, 0, SHADER_MAX_PATH_LEN);
-    strncpy(res.path, path, SHADER_MAX_PATH_LEN);
+    memset(res.path, 0, MAX_SHADER_PATH);
+    strncpy(res.path, path, MAX_SHADER_PATH);
 
     return res;
 }
@@ -213,8 +212,7 @@ static struct vk_shader shader_from_path(const char *path, i32 type) {
 static struct vk_pipeline build_pipeline(struct vk_init *init,
                                          struct vk_swapchain *swapchain,
                                          struct vk_pipeline_manager *manager,
-                                         struct vk_pipeline_desc *desc,
-                                         bool api_call) {
+                                         struct vk_pipeline_desc *desc) {
     struct vk_pipeline res = {0};
 
     res.shaders = malloc(sizeof(struct vk_shader) * MAX_SHADER_STAGES);
@@ -228,9 +226,7 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
     VkShaderModule shader_modules[MAX_SHADER_STAGES];
     u32 shader_stage_index = 0;
 
-    if (desc->vert_path) {
-        res.desc.vert_path = strdup(desc->vert_path);
-
+    if (desc->has_vertex_shader) {
         VkShaderModule module =
             shader_compile(init, manager, desc->vert_path, SHADER_TYPE_VERTEX);
         if (module == VK_NULL_HANDLE) {
@@ -239,13 +235,11 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
 
         res.shaders[shader_stage_index] =
             shader_from_path(desc->vert_path, SHADER_TYPE_VERTEX);
-        add_shader_stage(&res, shader_stages, shader_modules,
-                         &shader_stage_index, module, SHADER_TYPE_VERTEX);
+        add_shader_stage(shader_stages, shader_modules, &shader_stage_index,
+                         module, SHADER_TYPE_VERTEX);
     }
 
-    if (desc->frag_path) {
-        res.desc.frag_path = strdup(desc->frag_path);
-
+    if (desc->has_fragment_shader) {
         VkShaderModule module = shader_compile(init, manager, desc->frag_path,
                                                SHADER_TYPE_FRAGMENT);
         if (module == VK_NULL_HANDLE) {
@@ -254,8 +248,8 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
 
         res.shaders[shader_stage_index] =
             shader_from_path(desc->frag_path, SHADER_TYPE_FRAGMENT);
-        add_shader_stage(&res, shader_stages, shader_modules,
-                         &shader_stage_index, module, SHADER_TYPE_FRAGMENT);
+        add_shader_stage(shader_stages, shader_modules, &shader_stage_index,
+                         module, SHADER_TYPE_FRAGMENT);
     }
 
     res.shader_count = shader_stage_index;
@@ -388,14 +382,6 @@ error_path:
         free(res.shaders);
     }
 
-    if (res.desc.vert_path) {
-        free((void *)res.desc.vert_path);
-    }
-
-    if (res.desc.frag_path) {
-        free((void *)res.desc.frag_path);
-    }
-
     return (struct vk_pipeline){0};
 }
 
@@ -411,7 +397,7 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
 
     vk_pipeline_id id = manager->count;
     manager->entries[manager->count++] =
-        build_pipeline(init, swapchain, manager, desc, true);
+        build_pipeline(init, swapchain, manager, desc);
 
     if (!manager->entries[id].valid) {
         LOGM(ERROR, "pipeline creation failed");
@@ -422,14 +408,6 @@ vk_pipeline_id vk_pipeline_create(struct vk_init *init,
 }
 
 static void destroy_pipeline(struct vk_init *init, struct vk_pipeline *p) {
-    if (p->desc.vert_path) {
-        free((void *)p->desc.vert_path);
-    }
-
-    if (p->desc.frag_path) {
-        free((void *)p->desc.frag_path);
-    }
-
     if (p->shaders) {
         free(p->shaders);
     }
@@ -469,7 +447,7 @@ void vk_pipeline_manager_check_reload(struct vk_init *init,
 
         if (dirty) {
             struct vk_pipeline new_pipeline =
-                build_pipeline(init, swapchain, manager, &p->desc, false);
+                build_pipeline(init, swapchain, manager, &p->desc);
             if (!new_pipeline.valid) {
                 LOGM(WARN, "failed to recreate pipeline");
                 return;
@@ -540,4 +518,129 @@ struct vk_pipeline *vk_pipeline_manager_get(struct vk_pipeline_manager *manager,
     }
 
     return &manager->entries[id];
+}
+
+void vk_pipeline_set_shaders(struct vk_pipeline_desc *desc, const char *vert,
+                             const char *frag) {
+    if (vert) {
+        size_t len = strlen(vert);
+        if (len >= MAX_SHADER_PATH) {
+            LOGM(ERROR, "vertex shader path too long: %s", vert);
+            return;
+        }
+
+        strncpy(desc->vert_path, vert, MAX_SHADER_PATH);
+        desc->has_vertex_shader = true;
+    }
+
+    if (frag) {
+        size_t len = strlen(frag);
+        if (len >= MAX_SHADER_PATH) {
+            LOGM(ERROR, "fragment shader path too long: %s", frag);
+            return;
+        }
+
+        strncpy(desc->frag_path, frag, MAX_SHADER_PATH);
+        desc->has_fragment_shader = true;
+    }
+}
+
+void vk_pipeline_set_vertex_input(struct vk_pipeline_desc *desc,
+                                  VkVertexInputBindingDescription *bindings,
+                                  u32 bindings_count,
+                                  VkVertexInputAttributeDescription *attributes,
+                                  u32 attribute_count) {
+    if (bindings_count > MAX_BINDING_COUNT) {
+        LOGM(ERROR, "bindings_count > MAX_BINDING_COUNT");
+        return;
+    }
+
+    if (attribute_count > MAX_ATTRIBUTE_COUNT) {
+        LOGM(ERROR, "attribute_count > MAX_ATTRIBUTE_COUNT");
+        return;
+    }
+
+    memset(desc->bindings, 0, sizeof(desc->bindings));
+    memcpy(desc->bindings, bindings,
+           sizeof(VkVertexInputBindingDescription) * bindings_count);
+
+    memset(desc->attributes, 0, sizeof(desc->attributes));
+    memcpy(desc->attributes, attributes,
+           sizeof(VkVertexInputAttributeDescription) * attribute_count);
+
+    desc->binding_count = bindings_count;
+    desc->attribute_count = attribute_count;
+}
+
+void vk_pipeline_set_cull_mode(struct vk_pipeline_desc *desc,
+                               VkCullModeFlags cull_mode,
+                               VkFrontFace front_face) {
+    desc->cull_mode = cull_mode;
+    desc->front_face = front_face;
+}
+
+void vk_pipeline_set_depth_state(struct vk_pipeline_desc *desc,
+                                 VkBool32 depth_write, VkBool32 depth_test,
+                                 VkCompareOp depth_compare_op) {
+    desc->depth_write = depth_write;
+    desc->depth_test = depth_test;
+    desc->depth_compare_op = depth_compare_op;
+}
+
+void vk_pipeline_set_polygon_mode(struct vk_pipeline_desc *desc,
+                                  VkPolygonMode mode) {
+    desc->polygon_mode = mode;
+}
+
+void vk_pipeline_set_blend_state(
+    struct vk_pipeline_desc *desc,
+    VkPipelineColorBlendAttachmentState *blend_attachments, u32 blend_count) {
+
+    if (blend_attachments == NULL || blend_count == 0) {
+        memset(desc->blend_attachment, 0, sizeof(desc->blend_attachment));
+        desc->blend_attachment_count = 0;
+        return;
+    }
+
+    if (blend_count > MAX_BLEND_COUNT) {
+        LOGM(ERROR, "blend_count > MAX_BLEND_COUNT");
+        return;
+    }
+
+    memset(desc->blend_attachment, 0, sizeof(desc->blend_attachment));
+    memcpy(desc->blend_attachment, blend_attachments,
+           sizeof(VkPipelineColorBlendAttachmentState) * blend_count);
+    desc->blend_attachment_count = blend_count;
+}
+
+void vk_pipeline_set_color_attachment(struct vk_pipeline_desc *desc,
+                                      u32 count) {
+    desc->color_attachment_count = count;
+}
+
+void vk_pipeline_set_push_constant(struct vk_pipeline_desc *desc,
+                                   u32 push_constant_size,
+                                   VkShaderStageFlags push_constant_stages) {
+    desc->push_constant_size = push_constant_size;
+    desc->push_constant_stages = push_constant_stages;
+}
+
+void vk_pipeline_set_descriptor(struct vk_pipeline_desc *desc,
+                                VkDescriptorSetLayout *layouts,
+                                u32 layout_count) {
+    if (!layouts && layout_count) {
+        LOGM(ERROR, "layouts == NULL but layout_count != 0");
+        return;
+    }
+
+    if (layout_count > MAX_DESCRIPTOR_LAYOUT_COUNT) {
+        LOGM(ERROR, "layout_count > MAX_DESCRIPTOR_LAYOUT_COUNT");
+        return;
+    }
+
+    memset(desc->descriptor_set_layouts, 0,
+           sizeof(desc->descriptor_set_layouts));
+    memcpy(desc->descriptor_set_layouts, layouts,
+           sizeof(VkDescriptorSetLayout) * layout_count);
+    desc->descriptor_set_layout_count = layout_count;
 }
