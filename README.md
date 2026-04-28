@@ -2,6 +2,8 @@
 
 Cloud Rendering using vulkan
 
+ONLY LINUX RIGHT NOW!!!
+
 Supports gltf loading right now.
 
 Lighting:
@@ -35,4 +37,6 @@ make full_clean
 - cgltf
 - glfw
 - vulkan
+- shaderc
+- FastNoiseLite
 - stbi

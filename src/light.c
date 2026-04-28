@@ -1,4 +1,5 @@
 
+#include "vk/pipeline.h"
 #include <full_types.h>
 #include <light.h>
 #include <log.h>
@@ -7,6 +8,7 @@
 #include <vulkan/vulkan.h>
 
 #include <string.h>
+#include <vulkan/vulkan_core.h>
 
 #define SHADOW_MAP_SIZE 1024
 
@@ -16,35 +18,7 @@ enum {
     LIGHT_TYPE_SPOT,
 };
 
-// TODO: improve pipeline builder to support this special kind of pipeline
-static bool create_shadow_pipeline(struct renderer *r,
-                                   struct vk_pipeline *pipeline) {
-
-    VkShaderModule vert_module;
-    if (!vk_shader_module_create(&r->init, &vert_module,
-                                 "build/spv/shadow-vert.spv")) {
-        return false;
-    }
-
-    LOGM(API_DUMP, "created vertex shader module");
-
-    VkPipelineShaderStageCreateInfo shader_stages[] = {
-        {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = vert_module,
-            .pName = "main",
-        },
-    };
-
-    VkPipelineRenderingCreateInfo dynamic_rendering = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount = 0,
-        .pColorAttachmentFormats = NULL,
-        .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
-        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
-    };
-
+static vk_pipeline_id create_shadow_pipeline(struct renderer *r) {
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
         .stride = sizeof(f32) * 8,
@@ -71,114 +45,23 @@ static bool create_shadow_pipeline(struct renderer *r,
         },
     };
 
-    VkPipelineVertexInputStateCreateInfo vertex = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        .vertexBindingDescriptionCount = 1,
-        .pVertexBindingDescriptions = &binding_desc,
-        .vertexAttributeDescriptionCount = ARRAY_COUNT(attrib_desc),
-        .pVertexAttributeDescriptions = attrib_desc,
-    };
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
 
-    VkPipelineInputAssemblyStateCreateInfo assembly = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-    };
+    vk_pipeline_set_shaders(&desc, "src/shaders/shadow.vert", NULL);
 
-    VkPipelineViewportStateCreateInfo viewport = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        .viewportCount = 1,
-        .scissorCount = 1,
-    };
+    vk_pipeline_set_vertex_input(&desc, &binding_desc, 1, attrib_desc,
+                                 ARRAY_COUNT(attrib_desc));
 
-    VkPipelineRasterizationStateCreateInfo rasterization = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        .lineWidth = 1.0f,
-        .depthClampEnable = VK_FALSE,
-        .polygonMode = VK_POLYGON_MODE_FILL,
-        .cullMode = VK_CULL_MODE_FRONT_BIT,
-        .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-        .depthBiasEnable = VK_TRUE,
-    };
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+    vk_pipeline_set_push_constant(&desc, sizeof(struct shadow_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT);
+    vk_pipeline_set_color_attachment(&desc, 0);
+    vk_pipeline_set_blend_state(&desc, NULL, 0);
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_FRONT_BIT,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
-    VkPipelineMultisampleStateCreateInfo multisample = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-    };
-
-    VkPipelineDepthStencilStateCreateInfo depth_stencil = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-        .depthTestEnable = VK_TRUE,
-        .depthWriteEnable = VK_TRUE,
-        .depthCompareOp = VK_COMPARE_OP_LESS,
-        .minDepthBounds = 0.0f,
-        .maxDepthBounds = 1.0f,
-    };
-
-    VkDynamicState dym_states[] = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR,
-    };
-
-    VkPipelineDynamicStateCreateInfo dym_state = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-        .dynamicStateCount = ARRAY_COUNT(dym_states),
-        .pDynamicStates = dym_states,
-    };
-
-    VkPipelineColorBlendStateCreateInfo color_blend = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-    };
-
-    VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .size = sizeof(struct shadow_pc),
-    };
-
-    VkPipelineLayoutCreateInfo layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_range,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->descriptors.layout,
-    };
-
-    if (vkCreatePipelineLayout(r->init.dev, &layout_create_info, NULL,
-                               &pipeline->layout) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to create pipeline layout");
-        goto error_path;
-    }
-
-    VkGraphicsPipelineCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        .pNext = &dynamic_rendering,
-        .layout = pipeline->layout,
-        .stageCount = ARRAY_COUNT(shader_stages),
-        .pStages = shader_stages,
-        .pVertexInputState = &vertex,
-        .pInputAssemblyState = &assembly,
-        .pViewportState = &viewport,
-        .pRasterizationState = &rasterization,
-        .pMultisampleState = &multisample,
-        .pDepthStencilState = &depth_stencil,
-        .pColorBlendState = &color_blend,
-        .pDynamicState = &dym_state,
-        .renderPass = VK_NULL_HANDLE, // better safe than sorry xD
-    };
-
-    if (vkCreateGraphicsPipelines(r->init.dev, 0, 1, &create_info, NULL,
-                                  &pipeline->handle) != VK_SUCCESS) {
-        LOGM(ERROR, "failed to create shadow pipeline");
-        goto error_path;
-    }
-
-    vkDestroyShaderModule(r->init.dev, vert_module, NULL);
-
-    return true;
-
-error_path:
-    vkDestroyShaderModule(r->init.dev, vert_module, NULL);
-
-    return false;
+    return vk_pipeline_create(&r->init, &r->swapchain, &r->pipeline_manager,
+                              &desc);
 }
 
 bool light_manager_create(struct renderer *r, struct light_manager *manager) {
@@ -205,7 +88,10 @@ bool light_manager_create(struct renderer *r, struct light_manager *manager) {
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
 
-    create_shadow_pipeline(r, &manager->shadow_pip);
+    manager->shadow_pip = create_shadow_pipeline(r);
+    if (manager->shadow_pip == NO_PIPELINE) {
+        return false;
+    }
 
     return true;
 }

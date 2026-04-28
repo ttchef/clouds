@@ -25,13 +25,17 @@
 // deliverables and acceptance criteria. (~ by cheesecake)
 
 #include "model.h"
+#include "types.h"
 #include "vk/matrix_ubo.h"
+#include "vk/pipeline.h"
 #include <darray.h>
 #include <full_types.h>
+#include <iso646.h>
 #include <log.h>
 #include <renderer.h>
+#include <vulkan/vulkan_core.h>
 
-static bool create_model_color_pipeline(struct renderer *r) {
+static bool create_pipelines(struct renderer *r) {
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
         .stride = sizeof(f32) * 8,
@@ -58,198 +62,73 @@ static bool create_model_color_pipeline(struct renderer *r) {
         },
     };
 
-    VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        .size = sizeof(struct model_color_pc),
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
+
+    VkPipelineColorBlendAttachmentState color_blend_attachment = {
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = VK_TRUE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
     };
 
-    VkPipelineLayoutCreateInfo layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_range,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->descriptors.layout,
-    };
+    // general description matching all pipelines
+    vk_pipeline_set_blend_state(&desc, &color_blend_attachment, 1);
+    vk_pipeline_set_vertex_input(&desc, &binding_desc, 1, attrib_desc,
+                                 ARRAY_COUNT(attrib_desc));
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
 
-    if (!vk_pipeline_create(&r->init, &r->swapchain, &r->model_color_pip,
-                            "build/spv/model_color-vert.spv",
-                            "build/spv/model_color-frag.spv", binding_desc,
-                            attrib_desc, ARRAY_COUNT(attrib_desc),
-                            layout_create_info, false)) {
+    // custom description
+    vk_pipeline_set_shaders(&desc, "src/shaders/model_color.vert",
+                            "src/shaders/model_color.frag");
+    vk_pipeline_set_push_constant(&desc, sizeof(struct model_color_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    r->model_color_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                            &r->pipeline_manager, &desc);
+    if (r->model_color_pip == NO_PIPELINE) {
         return false;
     }
 
-    return true;
-}
+    LOGM(API_DUMP, "created model color pipeline");
 
-static bool create_model_texture_pipeline(struct renderer *r) {
-    VkVertexInputBindingDescription binding_desc = {
-        .binding = 0,
-        .stride = sizeof(f32) * 8,
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-    };
+    vk_pipeline_set_shaders(&desc, "src/shaders/model_texture.vert",
+                            "src/shaders/model_texture.frag");
 
-    VkVertexInputAttributeDescription attrib_desc[] = {
-        {
-            .binding = 0,
-            .location = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-        },
-        {
-            .binding = 0,
-            .location = 1,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = sizeof(f32) * 3,
-        },
-        {
-            .binding = 0,
-            .location = 2,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = sizeof(f32) * 5,
-        },
-    };
+    vk_pipeline_set_push_constant(&desc, sizeof(struct model_texture_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        .size = sizeof(struct model_texture_pc),
-    };
-
-    VkPipelineLayoutCreateInfo layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_range,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->descriptors.layout,
-    };
-
-    if (!vk_pipeline_create(&r->init, &r->swapchain, &r->model_texture_pip,
-                            "build/spv/model_texture-vert.spv",
-                            "build/spv/model_texture-frag.spv", binding_desc,
-                            attrib_desc, ARRAY_COUNT(attrib_desc),
-                            layout_create_info, false)) {
+    r->model_texture_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                              &r->pipeline_manager, &desc);
+    if (r->model_texture_pip == NO_PIPELINE) {
         return false;
     }
 
-    return true;
-}
+    LOGM(API_DUMP, "created model texture pipeline");
 
-static bool create_skybox_pipeline(struct renderer *r) {
+    vk_pipeline_set_shaders(&desc, "src/shaders/cloud.vert",
+                            "src/shaders/cloud.frag");
 
-    VkVertexInputBindingDescription binding_desc = {
-        .binding = 0,
-        .stride = sizeof(f32) * 8,
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-    };
+    vk_pipeline_set_push_constant(&desc, sizeof(struct cloud_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    VkVertexInputAttributeDescription attrib_desc[] = {
-        {
-            .binding = 0,
-            .location = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-        },
-        {
-            .binding = 0,
-            .location = 1,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = sizeof(f32) * 3,
-        },
-        {
-            .binding = 0,
-            .location = 2,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = sizeof(f32) * 5,
-        },
-    };
-
-    VkPipelineLayoutCreateInfo layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->descriptors.layout,
-    };
-
-    if (!vk_pipeline_create(&r->init, &r->swapchain, &r->skybox_pip,
-                            "build/spv/skybox-vert.spv",
-                            "build/spv/skybox-frag.spv", binding_desc,
-                            attrib_desc, ARRAY_COUNT(attrib_desc),
-                            layout_create_info, true)) {
+    r->cloud_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                      &r->pipeline_manager, &desc);
+    if (r->cloud_pip == NO_PIPELINE) {
         return false;
     }
 
-    // TODO: move out into a good function
-    vk_image_create_cube_map(&r->init, &r->skybox,
-                             "assets/skyboxes/galaxy.hdr");
-
-    VkDescriptorImageInfo image_info = {
-        .sampler = r->samplers.texture_sampler.handle,
-        .imageView = r->skybox.view,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    };
-
-    VkWriteDescriptorSet write = {
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .pImageInfo = &image_info,
-        .dstBinding = GLOBAL_DESC_SKYBOX_BINDING,
-        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 1,
-    };
-
-    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
-        write.dstSet = r->descriptors.sets[i];
-        vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
-    }
-
-    return true;
-}
-
-static bool create_cloud_pipeline(struct renderer *r) {
-
-    VkVertexInputBindingDescription binding_desc = {
-        .binding = 0,
-        .stride = sizeof(f32) * 8,
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-    };
-
-    VkVertexInputAttributeDescription attrib_desc[] = {
-        {
-            .binding = 0,
-            .location = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-        },
-        {
-            .binding = 0,
-            .location = 1,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = sizeof(f32) * 3,
-        },
-        {
-            .binding = 0,
-            .location = 2,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = sizeof(f32) * 5,
-        },
-    };
-
-    VkPushConstantRange push_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        .size = sizeof(struct cloud_pc),
-    };
-
-    VkPipelineLayoutCreateInfo layout_create_info = {
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .setLayoutCount = 1,
-        .pSetLayouts = &r->descriptors.layout,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_range,
-    };
-
-    if (!vk_pipeline_create(
-            &r->init, &r->swapchain, &r->cloud_pip, "build/spv/cloud-vert.spv",
-            "build/spv/cloud-frag.spv", binding_desc, attrib_desc,
-            ARRAY_COUNT(attrib_desc), layout_create_info, false)) {
-        return false;
-    }
+    LOGM(API_DUMP, "created cloud pipeline");
 
     // TODO: move out into another function
+    // cloud noise image
     vk_image_create_noise(&r->init, &r->noise);
 
     VkDescriptorImageInfo image_info = {
@@ -271,42 +150,45 @@ static bool create_cloud_pipeline(struct renderer *r) {
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
 
+    vk_pipeline_set_shaders(&desc, "src/shaders/skybox.vert",
+                            "src/shaders/skybox.frag");
+    vk_pipeline_set_push_constant(&desc, 0, 0);
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_FRONT_BIT,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    vk_pipeline_set_depth_state(&desc, VK_FALSE, VK_TRUE,
+                                VK_COMPARE_OP_LESS_OR_EQUAL);
+
+    r->skybox_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                       &r->pipeline_manager, &desc);
+    if (r->skybox_pip == NO_PIPELINE) {
+        return false;
+    }
+
+    // TODO: move out into a good function
+    // skybox cube map
+    vk_image_create_cube_map(&r->init, &r->skybox,
+                             "assets/skyboxes/planet.hdr");
+
+    image_info = (VkDescriptorImageInfo){
+        .sampler = r->samplers.texture_sampler.handle,
+        .imageView = r->skybox.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    write = (VkWriteDescriptorSet){
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pImageInfo = &image_info,
+        .dstBinding = GLOBAL_DESC_SKYBOX_BINDING,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+    };
+
+    for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
+        write.dstSet = r->descriptors.sets[i];
+        vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
+    }
+
     return true;
-}
-
-static bool create_pipelines(struct renderer *r) {
-    if (!create_model_color_pipeline(r)) {
-        return false;
-    }
-
-    LOGM(API_DUMP, "created model color pipeline");
-
-    if (!create_model_texture_pipeline(r)) {
-        return false;
-    }
-
-    LOGM(API_DUMP, "created model texture pipeline");
-
-    if (!create_skybox_pipeline(r)) {
-        return false;
-    }
-
-    LOGM(API_DUMP, "created skybox pipeline");
-
-    if (!create_cloud_pipeline(r)) {
-        return false;
-    }
-
-    LOGM(API_DUMP, "created cloud pipeline");
-
-    return true;
-}
-
-static void destroy_pipelines(struct renderer *r) {
-    vk_pipeline_destroy(&r->init, &r->model_color_pip);
-    vk_pipeline_destroy(&r->init, &r->model_texture_pip);
-    vk_pipeline_destroy(&r->init, &r->skybox_pip);
-    vk_pipeline_destroy(&r->init, &r->cloud_pip);
 }
 
 bool renderer_init(struct renderer *r, struct window *window) {
@@ -334,6 +216,12 @@ bool renderer_init(struct renderer *r, struct window *window) {
     }
 
     LOGM(INFO, "created vulkan descriptor sets");
+
+    if (!vk_pipeline_manager_create(&r->pipeline_manager)) {
+        return false;
+    }
+
+    LOGM(INFO, "created pipeline manager");
 
     if (!texture_manager_create(r, &r->texture_manager)) {
         return false;
@@ -375,9 +263,11 @@ bool renderer_init(struct renderer *r, struct window *window) {
 }
 
 void renderer_deint(struct renderer *r) {
+    vkDeviceWaitIdle(r->init.dev);
+
     vk_matrix_ubo_destroy(r, &r->matrix_ubo);
     darrayDestroy(r->models);
-    destroy_pipelines(r);
+    vk_pipeline_manager_destroy(&r->init, &r->pipeline_manager);
 
     light_manager_destroy(r, &r->light_manager);
     texture_manager_destroy(r, &r->texture_manager);
@@ -402,6 +292,8 @@ bool renderer_resize(struct renderer *r, u32 width, u32 height) {
 bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
     light_sync_gpu(r);
     camera_update(&r->camera, window, dt);
+    vk_pipeline_manager_check_reload(&r->init, &r->swapchain,
+                                     &r->pipeline_manager);
 
     f32 aspect =
         (f32)r->swapchain.extent.width / (f32)r->swapchain.extent.height;

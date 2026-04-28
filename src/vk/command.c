@@ -79,8 +79,11 @@ void vk_command_destroy(struct vk_init *init, struct vk_command *cmd) {
 static void record_skybox(struct renderer *r, struct vk_frame_data *data) {
     VkDeviceSize offsets[] = {0};
 
+    struct vk_pipeline *skybox_pip =
+        vk_pipeline_manager_get(&r->pipeline_manager, r->skybox_pip);
+
     vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      r->skybox_pip.handle);
+                      skybox_pip->handle);
 
     vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
                            &r->models[r->box_id].vertex_buffer.handle, offsets);
@@ -89,7 +92,7 @@ static void record_skybox(struct renderer *r, struct vk_frame_data *data) {
                          VK_INDEX_TYPE_UINT16);
 
     vkCmdBindDescriptorSets(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            r->skybox_pip.layout, 0, 1,
+                            skybox_pip->layout, 0, 1,
                             &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
 
     vkCmdDrawIndexed(data->cmd_buffer, r->models[r->box_id].n_index, 1, 0, 0,
