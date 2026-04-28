@@ -9,6 +9,7 @@
 
 bool vk_command_create(struct vk_init *init, struct vk_command *cmd) {
     cmd->frame_idx = 0;
+    cmd->frame_idx_not_cleared = 0;
 
     VkCommandPoolCreateInfo pool_create_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
