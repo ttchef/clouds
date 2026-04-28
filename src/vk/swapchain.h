@@ -10,6 +10,20 @@
 
 struct vk_init;
 
+#define MAX_SWAPCHAIN_GRAVEYARD_SIZE 4
+
+struct vk_swapchain_zombie {
+    VkSwapchainKHR handle;
+    VkImageView *imgs_views;
+    VkImage *imgs;
+
+    struct vk_image *depth_images;
+    VkSemaphore *finished;
+
+    u32 n_imgs;
+    u64 frame_retired;
+};
+
 struct vk_swapchain {
     VkSwapchainKHR handle;
 
@@ -26,10 +40,20 @@ struct vk_swapchain {
 
     VkSemaphore *finished;
     u32 img_idx;
+
+    // old swapchain "graveyard"
+    struct vk_swapchain_zombie graveyard[MAX_SWAPCHAIN_GRAVEYARD_SIZE];
+    u32 graveyard_count;
 };
 
 bool vk_swapchain_create(struct vk_init *init, struct vk_swapchain *swapchain,
                          u32 w, u32 h);
+
+void vk_swapchain_drain(struct vk_init *init, struct vk_swapchain *swapchain,
+                        u64 frame_idx_not_cleared);
+
+bool vk_swapchain_recreate(struct vk_init *init, struct vk_swapchain *swapchain,
+                           u32 width, u32 height, u64 frame_idx_not_cleared);
 
 void vk_swapchain_destroy(struct vk_init *init, struct vk_swapchain *swapchain);
 

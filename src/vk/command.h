@@ -23,6 +23,7 @@ struct vk_command {
     struct vk_frame_data frame_data[FRAMES_IN_FLIGHT];
 
     u32 frame_idx;
+    u64 frame_idx_not_cleared;
 };
 
 bool vk_command_create(struct vk_init *init, struct vk_command *cmd);

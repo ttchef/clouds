@@ -24,13 +24,9 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
-#include "model.h"
-#include "types.h"
-#include "vk/matrix_ubo.h"
-#include "vk/pipeline.h"
+#include "vk/swapchain.h"
 #include <darray.h>
 #include <full_types.h>
-#include <iso646.h>
 #include <log.h>
 #include <renderer.h>
 #include <vulkan/vulkan_core.h>
@@ -279,10 +275,8 @@ void renderer_deint(struct renderer *r) {
 }
 
 bool renderer_resize(struct renderer *r, u32 width, u32 height) {
-    vkDeviceWaitIdle(r->init.dev);
-
-    vk_swapchain_destroy(&r->init, &r->swapchain);
-    if (!vk_swapchain_create(&r->init, &r->swapchain, width, height)) {
+    if (!vk_swapchain_recreate(&r->init, &r->swapchain, width, height,
+                               r->cmd.frame_idx_not_cleared)) {
         return false;
     }
 
@@ -319,6 +313,8 @@ bool renderer_draw(struct renderer *r, struct window *window) {
 
     vkWaitForFences(init->dev, 1, &data->in_flight_fence, VK_TRUE, UINT64_MAX);
     vkResetFences(init->dev, 1, &data->in_flight_fence);
+
+    vk_swapchain_drain(init, &r->swapchain, r->cmd.frame_idx_not_cleared);
 
     VkResult res = vkAcquireNextImageKHR(init->dev, r->swapchain.handle,
                                          UINT64_MAX, data->image_available,
@@ -379,6 +375,7 @@ bool renderer_draw(struct renderer *r, struct window *window) {
     }
 
     r->cmd.frame_idx = (r->cmd.frame_idx + 1) % FRAMES_IN_FLIGHT;
+    r->cmd.frame_idx_not_cleared++;
 
     return true;
 }
