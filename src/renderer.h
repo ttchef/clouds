@@ -10,6 +10,7 @@
 #include <vk/sampler.h>
 #include <vk/swapchain.h>
 
+#include <benchmark.h>
 #include <camera.h>
 #include <draw.h>
 #include <light.h>
@@ -47,6 +48,8 @@ struct renderer {
     // model id of a standard 3d cube
     model_id box_id;
     struct render_queue render_queue;
+
+    struct benchmark benchmark;
 };
 
 bool renderer_init(struct renderer *r, struct window *window);

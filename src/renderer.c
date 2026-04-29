@@ -24,6 +24,7 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
+#include "benchmark.h"
 #include "light.h"
 #include "texture.h"
 #include "vk/swapchain.h"
@@ -255,6 +256,7 @@ bool renderer_init(struct renderer *r, struct window *window) {
 
     draw_init(&r->render_queue);
     camera_init(&r->camera);
+    benchmark_init(&r->benchmark);
 
     r->models = darrayCreate(struct model);
     model_create_file(r, "assets/models/box.glb");
@@ -292,6 +294,8 @@ bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
     camera_update(&r->camera, window, dt);
     vk_pipeline_manager_check_reload(&r->init, &r->swapchain,
                                      &r->pipeline_manager);
+    benchmark_update(&r->benchmark, dt);
+    benchmark_print(&r->benchmark);
 
     f32 aspect =
         (f32)r->swapchain.extent.width / (f32)r->swapchain.extent.height;
