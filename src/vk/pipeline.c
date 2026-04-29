@@ -141,6 +141,7 @@ static VkShaderModule shader_compile(struct vk_init *init,
         const char *msg = shaderc_result_get_error_message(result);
         LOGM(WARN, "shader compilation failed: %s\n%s", path, msg);
         shaderc_result_release(result);
+        free(buffer);
         return VK_NULL_HANDLE;
     }
 
@@ -155,10 +156,12 @@ static VkShaderModule shader_compile(struct vk_init *init,
         VK_SUCCESS) {
         LOGM(ERROR, "failed to create shader module: %s", path);
         shaderc_result_release(result);
+        free(buffer);
         return VK_NULL_HANDLE;
     }
 
     shaderc_result_release(result);
+    free(buffer);
     return module;
 }
 
@@ -198,6 +201,9 @@ static bool add_shader_stage(VkPipelineShaderStageCreateInfo *shader_stages,
 
 static struct vk_shader shader_from_path(const char *path, i32 type) {
     struct vk_shader res = {0};
+    if (!path) {
+        return res;
+    }
 
     res.type = type;
     res.last_modified = get_file_mtime(path);
@@ -216,6 +222,11 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
     struct vk_pipeline res = {0};
 
     res.shaders = malloc(sizeof(struct vk_shader) * MAX_SHADER_STAGES);
+    if (!res.shaders) {
+        LOGM(ERROR, "failed to allocate pipeline shaders");
+        return res;
+    }
+
     res.valid = true;
     res.desc = *desc;
 

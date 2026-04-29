@@ -41,6 +41,13 @@ layout (push_constant) uniform Push {
 
 layout (location = 0) out vec4 out_color;
 
+#define LIGHT_STEPS 6
+#define LIGHT_STEP_SIZE 0.3
+#define EXTINCTION 8.0
+#define SCATTERING 6.0
+#define HG_G 0.6 // henyes greenstein anisotropy 0 isotropic - 1 full forward
+#define DENSITY_THRESHOLD 0.25
+
 vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
     vec3 t0 = (box_min - ray_origin) / ray_dir;
     vec3 t1 = (box_max - ray_origin) / ray_dir;
@@ -69,12 +76,35 @@ float sample_density(vec3 p) {
     return d;
 }
 
+float light_transmittance(vec3 p, vec3 light_dir) {
+    float shadow = 0.0;
+    vec3 lp = p;
+
+    for (int i = 0; i < LIGHT_STEPS; i++) {
+        lp += light_dir * LIGHT_STEP_SIZE;
+
+        if (any(lessThan(lp, vec3(-1.0))) || any(greaterThan(lp, vec3(1.0)))) {
+            break;
+        }
+        shadow += sample_density(lp) * LIGHT_STEP_SIZE;
+    }
+    return exp(-shadow * EXTINCTION);
+}
+
+float henyey_greenstein(float cos_theta, float g) {
+    float g2 = g * g;
+    return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * cos_theta, 1.5));    
+}
+
 void main() {
     float gamma = 2.2;
 
     vec3 normal = normalize(in_normal);
     vec3 color = pow(pc.color.xyz, vec3(gamma));
     // vec3 color = pow(vec3(1.0, 0.0, 0.0), vec3(gamma));
+
+    vec3 sun_color = vec3(1.0, 0.95, 0.8);
+    vec3 ambient_color = vec3(0.4, 0.55, 0.8);
 
     // world space
     vec3 ray_origin_ws = pc.cam_pos.xyz;
@@ -85,6 +115,9 @@ void main() {
     // object space
     vec3 ray_origin = (inverse_model * vec4(ray_origin_ws, 1.0)).xyz;
     vec3 ray_dir = normalize((inverse_model * vec4(ray_dir_ws, 0.0)).xyz);
+
+    vec3 sun_dir_ws = normalize(vec3(-0.5, -0.5, 0.0));
+    vec3 sun_dir = normalize((inverse_model * vec4(sun_dir_ws, 0.0)).xyz);
 
     vec3 box_min = vec3(-1.0);
     vec3 box_max = vec3(1.0);
@@ -103,18 +136,26 @@ void main() {
     vec3 col = vec3(0.0);
     float transmittance = 1.0;
 
+    float cos_theta = dot(ray_dir, sun_dir);
+    float phase = henyey_greenstein(cos_theta, HG_G);
+
     for (; t < end; t += step_size) {
         vec3 p = ray_origin + t * ray_dir;
 
-        // TODO: noise density
         float d = sample_density(p);
+        d = max(0.0, d - DENSITY_THRESHOLD);
+
+        if (d < 0.001) continue;
 
         // Beer lamber law
-        float absorb = exp(-d * step_size);
+        float absorb = exp(-d * EXTINCTION * step_size);
 
         transmittance *= absorb;
 
-        col += transmittance * d * color * step_size;
+        float light = light_transmittance(p, sun_dir);
+        vec3 scattering = d * SCATTERING * step_size * transmittance * (phase * sun_color * light + 0.15 * ambient_color);
+
+        col += scattering;
 
         if (transmittance < 0.01) {
             break;
