@@ -24,6 +24,8 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
+#include "light.h"
+#include "texture.h"
 #include "vk/swapchain.h"
 #include <darray.h>
 #include <full_types.h>
@@ -303,6 +305,20 @@ bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
     r->matrix_ubo.data.proj_view = math_matrix_mul(perspective, view);
 
     vk_matrix_ubo_sync_data(r, &r->matrix_ubo);
+
+    // render lights
+    if (r->light_manager.render_lights) {
+        for (u32 i = 0; i < r->light_manager.spot_counter; i++) {
+            struct spot_light *l = &r->light_manager.spot[i];
+
+            if (!l->valid) {
+                continue;
+            }
+
+            draw_box(r, l->pos, (vec3){0.2, 0.2, 0.2},
+                     (vec4){1.0, 1.0, 1.0, 1.0}, NO_TEXTURE);
+        }
+    }
 
     return true;
 }

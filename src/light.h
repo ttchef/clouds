@@ -134,6 +134,7 @@ struct light_manager {
     vk_pipeline_id shadow_pip;
 
     struct light_buffer light_buffer;
+    bool render_lights;
 };
 
 bool light_manager_create(struct renderer *r, struct light_manager *manager);
@@ -165,5 +166,7 @@ void light_state_set(struct renderer *r, light_id id, bool on);
 
 // upload light data to uniform buffer on gpu
 bool light_sync_gpu(struct renderer *r);
+
+void light_set_render(struct renderer *r, bool render);
 
 #endif // LIGHT_H

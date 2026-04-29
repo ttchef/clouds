@@ -65,6 +65,8 @@ static vk_pipeline_id create_shadow_pipeline(struct renderer *r) {
 }
 
 bool light_manager_create(struct renderer *r, struct light_manager *manager) {
+    manager->render_lights = false;
+
     VkDescriptorBufferInfo buffer_info = {
         .offset = 0,
         .range = sizeof(struct light_buffer),
@@ -280,10 +282,14 @@ light_id light_spot_create(struct renderer *r, vec3 pos, vec3 direction,
     vec3 target = math_vec3_add(res.pos, dir_n);
 
     matrix light_view = math_matrix_look_at(res.pos, target, up);
-    matrix proj =
-        math_matrix_perspective(outer_cut_off * 2.0f, 1.0f, 0.1f, distance);
+    // matrix proj =
+    // math_matrix_perspective(outer_cut_off * 2.0f, 1.0f, 0.1f, distance);
+    // matrix proj =
+    // math_matrix_perspective(outer_cutt_of * 2.0f, 1.0f, 0.1f, distance);
 
-    res.transform = math_matrix_mul(proj, light_view);
+    matrix ortho = math_matrix_orthographic(-10, 10, -10, 10, 0.1f, distance);
+
+    res.transform = math_matrix_mul(ortho, light_view);
 
     res.shadow_index = create_shadow_map(
         r, &res.map, GLOBAL_DESC_SHADOW_SPOT_BINDING, &m->spot_counter);
@@ -504,4 +510,8 @@ bool light_sync_gpu(struct renderer *r) {
 
     memcpy(gpu_lights, &m->light_buffer, sizeof(struct light_buffer));
     return true;
+}
+
+void light_set_render(struct renderer *r, bool render) {
+    r->light_manager.render_lights = render;
 }

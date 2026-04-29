@@ -1,4 +1,5 @@
 
+#include "light.h"
 #include <log.h>
 #include <renderer.h>
 #include <window.h>
@@ -54,8 +55,11 @@ i32 main(void) {
         light_spot_create(r, (vec3){0, 1, -1}, (vec3){0, -0.5, -0.5},
                           (vec3){0.7, 0.2, 0.6}, 150.0f, 12.5f, 17.5f);
 
-    // light_id dir = renderer_create_dir_light(&c->rctx, (vec3){0, -0.5, -0.5},
-    // (vec3){1.0, 0.0, 0.0});
+    light_id still_spot =
+        light_spot_create(r, (vec3){0, 0.5, -2}, (vec3){0, 0, -1},
+                          (vec3){1.0, 0.0, 0.0}, 150.0f, 12.5f, 17.5f);
+
+    light_set_render(r, true);
 
     f32 last_time = window_get_time();
     while (!window_should_close(&window)) {

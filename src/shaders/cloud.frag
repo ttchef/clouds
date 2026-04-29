@@ -46,7 +46,7 @@ layout (location = 0) out vec4 out_color;
 #define EXTINCTION 8.0
 #define SCATTERING 6.0
 #define HG_G 0.6 // henyes greenstein anisotropy 0 isotropic - 1 full forward
-#define DENSITY_THRESHOLD 0.25
+#define DENSITY_THRESHOLD 0.3
 
 vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
     vec3 t0 = (box_min - ray_origin) / ray_dir;
@@ -96,6 +96,29 @@ float henyey_greenstein(float cos_theta, float g) {
     return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * cos_theta, 1.5));    
 }
 
+vec3 multi_scatter(vec3 p, vec3 sun_dir, float cos_theta, vec3 sun_color) {
+    vec3 result = vec3(0.0);
+    float extinction_ms = EXTINCTION;
+    float scatter_ms = SCATTERING;
+    float g_ms = HG_G;
+
+    for (int i = 0; i < 3; i++) {
+        float light = light_transmittance(p, sun_dir);
+        float phase = henyey_greenstein(cos_theta, g_ms);
+        result += scatter_ms * phase * sun_color * light * pow(0.5, float(i));
+
+        extinction_ms *= 0.5;
+        scatter_ms *= 0.5;
+        g_ms *= 0.5;
+    }
+
+    return result;
+}
+
+float jitter(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 void main() {
     float gamma = 2.2;
 
@@ -128,10 +151,11 @@ void main() {
         discard;
     }
 
-    float t = max(hit.x, 0.0);
+    float step_size = 0.01;
+    
+    float jit = jitter(gl_FragCoord.xy) * step_size;
+    float t = max(hit.x, 0.0) + jit;
     float end = hit.y;
-
-    float step_size = 0.005;
 
     vec3 col = vec3(0.0);
     float transmittance = 1.0;
@@ -153,7 +177,7 @@ void main() {
         transmittance *= absorb;
 
         float light = light_transmittance(p, sun_dir);
-        vec3 scattering = d * SCATTERING * step_size * transmittance * (phase * sun_color * light + 0.15 * ambient_color);
+        vec3 scattering = d * SCATTERING * step_size * transmittance * (multi_scatter(p, sun_dir, cos_theta, sun_color) + 0.15 * ambient_color);
 
         col += scattering;
 
