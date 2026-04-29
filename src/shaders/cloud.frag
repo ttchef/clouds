@@ -45,8 +45,9 @@ layout (location = 0) out vec4 out_color;
 #define LIGHT_STEP_SIZE 0.3
 #define EXTINCTION 8.0
 #define SCATTERING 6.0
-#define HG_G 0.6 // henyes greenstein anisotropy 0 isotropic - 1 full forward
+#define HG_G 0.6 // henyes greenstein anisotropy (0 isotropic - 1 ansiotropy)
 #define DENSITY_THRESHOLD 0.3
+#define DUAL_LOP_COEFF 0.7
 
 vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
     vec3 t0 = (box_min - ray_origin) / ray_dir;
@@ -96,6 +97,13 @@ float henyey_greenstein(float cos_theta, float g) {
     return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * cos_theta, 1.5));    
 }
 
+float dual_lop_henyey_greenstein(float cos_theta, float g) {
+    float forward = henyey_greenstein(cos_theta, g);
+    float backward = henyey_greenstein(cos_theta, -g);
+
+    return mix(backward, forward, DUAL_LOP_COEFF); 
+}
+
 vec3 multi_scatter(vec3 p, vec3 sun_dir, float cos_theta, vec3 sun_color) {
     vec3 result = vec3(0.0);
     float extinction_ms = EXTINCTION;
@@ -104,7 +112,7 @@ vec3 multi_scatter(vec3 p, vec3 sun_dir, float cos_theta, vec3 sun_color) {
 
     for (int i = 0; i < 3; i++) {
         float light = light_transmittance(p, sun_dir);
-        float phase = henyey_greenstein(cos_theta, g_ms);
+        float phase = dual_lop_henyey_greenstein(cos_theta, g_ms);
         result += scatter_ms * phase * sun_color * light * pow(0.5, float(i));
 
         extinction_ms *= 0.5;
