@@ -104,18 +104,16 @@ float dual_lop_henyey_greenstein(float cos_theta, float g) {
     return mix(backward, forward, DUAL_LOP_COEFF); 
 }
 
-vec3 multi_scatter(vec3 p, vec3 sun_dir, float cos_theta, vec3 sun_color) {
+vec3 multi_scatter(float cos_theta, vec3 sun_color, float light) {
     vec3 result = vec3(0.0);
-    float extinction_ms = EXTINCTION;
     float scatter_ms = SCATTERING;
     float g_ms = HG_G;
 
     for (int i = 0; i < 3; i++) {
-        float light = light_transmittance(p, sun_dir);
         float phase = dual_lop_henyey_greenstein(cos_theta, g_ms);
-        result += scatter_ms * phase * sun_color * light * pow(0.5, float(i));
+        float light_ms = pow(light, pow(0.5, float(i)));
+        result += scatter_ms * phase * sun_color * light_ms * pow(0.5, float(i));
 
-        extinction_ms *= 0.5;
         scatter_ms *= 0.5;
         g_ms *= 0.5;
     }
@@ -125,6 +123,10 @@ vec3 multi_scatter(vec3 p, vec3 sun_dir, float cos_theta, vec3 sun_color) {
 
 float jitter(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float beer_lambert(float d, float step_size) {
+    return exp(-d * EXTINCTION * step_size);
 }
 
 void main() {
@@ -159,7 +161,7 @@ void main() {
         discard;
     }
 
-    float step_size = 0.01;
+    float step_size = 0.02;
     
     float jit = jitter(gl_FragCoord.xy) * step_size;
     float t = max(hit.x, 0.0) + jit;
@@ -180,24 +182,20 @@ void main() {
         if (d < 0.001) continue;
 
         // Beer lamber law
-        float absorb = exp(-d * EXTINCTION * step_size);
-
-        transmittance *= absorb;
+        float absorb = beer_lambert(d, step_size);
 
         float light = light_transmittance(p, sun_dir);
-        vec3 scattering = d * SCATTERING * step_size * transmittance * (multi_scatter(p, sun_dir, cos_theta, sun_color) + 0.15 * ambient_color);
+        vec3 lighting = multi_scatter(cos_theta, sun_color, light) + 0.15 * ambient_color;
+        
+        vec3 scattering = d * SCATTERING * step_size * transmittance * lighting;
 
         col += scattering;
+        transmittance *= absorb;
 
         if (transmittance < 0.01) {
             break;
         }
     }
-
-    // gamma correction
-    color = pow(color, vec3(1.0 / gamma));
-
-    // out_color = vec4(color, 1.0);
 
     out_color = vec4(col, 1.0 - transmittance);
 }
