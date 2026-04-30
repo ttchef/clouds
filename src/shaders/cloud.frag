@@ -173,13 +173,23 @@ void main() {
     float cos_theta = dot(ray_dir, sun_dir);
     float phase = henyey_greenstein(cos_theta, HG_G);
 
-    for (; t < end; t += step_size) {
+    // for optimisation
+    bool in_cloud = false;
+    float big_step = step_size * 5.0;
+
+    while (t < end) {
         vec3 p = ray_origin + t * ray_dir;
 
         float d = sample_density(p);
         d = max(0.0, d - DENSITY_THRESHOLD);
 
-        if (d < 0.001) continue;
+        if (!in_cloud && d < 0.001) {
+            t += big_step;
+            continue;
+        }
+
+        in_cloud = true;
+        t += step_size;
 
         // Beer lamber law
         float absorb = beer_lambert(d, step_size);
@@ -195,6 +205,8 @@ void main() {
         if (transmittance < 0.01) {
             break;
         }
+
+        if (d < 0.001) in_cloud = false;
     }
 
     out_color = vec4(col, 1.0 - transmittance);
