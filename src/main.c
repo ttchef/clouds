@@ -1,6 +1,8 @@
 
+#include "cloud.h"
 #include "draw.h"
 #include "light.h"
+#include "model.h"
 #include <log.h>
 #include <renderer.h>
 #include <window.h>
@@ -62,6 +64,9 @@ i32 main(void) {
 
     light_set_render(r, true);
 
+    struct cloud cloud = cloud_create((vec3){0, 4, 0}, (vec3){1.0, 1.0, 1.0});
+    cloud_render_bounding_box(&cloud, true);
+
     f32 last_time = window_get_time();
     while (!window_should_close(&window)) {
         f32 current_time = window_get_time();
@@ -96,12 +101,7 @@ i32 main(void) {
 
         // draw_wireframe(r, (vec3){0, 4, 0}, (vec3){1.1, 1.1, 1.1},
         // (vec4){0.0f, 1.0f, 0.0f, 1.0f}, glibglob);
-
-        draw_cloud(r, (vec3){0, 4, 0}, (vec3){1, 1, 1},
-                   (vec4){0.0f, 1.0f, 0.0f, 1.0f});
-
-        draw_bounding_box(r, (vec3){0, 4, 0}, (vec3){1.1, 1.1, 1.1},
-                          (vec4){0.0f, 1.0f, 0.0f, 1.0f});
+        draw_cloud(r, cloud);
 
         renderer_draw(r, &window);
         window_poll_events();

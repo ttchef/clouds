@@ -2,6 +2,7 @@
 #ifndef DRAW_H
 #define DRAW_H
 
+#include <cloud.h>
 #include <cmath.h>
 #include <model.h>
 #include <texture.h>
@@ -72,7 +73,7 @@ void draw_model_color(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
 void draw_model_texture(struct renderer *r, vec3 pos, vec3 scale,
                         model_id model);
 
-void draw_cloud(struct renderer *r, vec3 pos, vec3 scale, vec4 color);
+void draw_cloud(struct renderer *r, struct cloud cloud);
 
 void draw_wireframe(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
                     model_id model);

@@ -41,7 +41,7 @@ void camera_update(struct camera *cam, struct window *window, f32 dt) {
             math_vec3_subtract(cam->pos, math_vec3_scale(up, cam->speed * dt));
     }
 
-    if (glfwGetMouseButton(window->handle, GLFW_MOUSE_BUTTON_LEFT) ==
+    if (glfwGetMouseButton(window->handle, GLFW_MOUSE_BUTTON_RIGHT) ==
         GLFW_PRESS) {
         glfwSetInputMode(window->handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -55,7 +55,7 @@ void camera_update(struct camera *cam, struct window *window, f32 dt) {
         }
     }
 
-    if (glfwGetMouseButton(window->handle, GLFW_MOUSE_BUTTON_LEFT) ==
+    if (glfwGetMouseButton(window->handle, GLFW_MOUSE_BUTTON_RIGHT) ==
         GLFW_RELEASE) {
         glfwSetInputMode(window->handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         cam->invis_cursor = false;

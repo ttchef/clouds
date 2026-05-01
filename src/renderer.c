@@ -24,12 +24,6 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
-#include "benchmark.h"
-#include "light.h"
-#include "texture.h"
-#include "types.h"
-#include "vk/pipeline.h"
-#include "vk/swapchain.h"
 #include <darray.h>
 #include <full_types.h>
 #include <log.h>
@@ -399,7 +393,8 @@ bool renderer_init(struct renderer *r, struct window *window) {
     benchmark_init(&r->benchmark);
 
     r->models = darrayCreate(struct model);
-    model_create_file(r, "assets/models/box.glb");
+    r->box_id = model_create_file(r, "assets/models/box.glb");
+    r->gizmo_id = model_create_file(r, "assets/models/gizmo.glb");
 
     return true;
 }

@@ -49,6 +49,7 @@ struct renderer {
 
     // model id of a standard 3d cube
     model_id box_id;
+    model_id gizmo_id;
     struct render_queue render_queue;
 
     struct benchmark benchmark;

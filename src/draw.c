@@ -85,12 +85,17 @@ void draw_model_texture(struct renderer *r, vec3 pos, vec3 scale,
     push_draw_cmd(r, &cmd);
 }
 
-void draw_cloud(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
+void draw_cloud(struct renderer *r, struct cloud cloud) {
+    if (cloud.render_bounding_box) {
+        draw_bounding_box(r, cloud.pos, cloud.scale,
+                          (vec4){0.0, 1.0, 0.0, 1.0});
+    }
+
     struct draw_cmd cmd = (struct draw_cmd){
         .type = DRAW_CMD_TYPE_CLOUD,
-        .pos = pos,
-        .scale = scale,
-        .cloud.color = color,
+        .pos = cloud.pos,
+        .scale = cloud.scale,
+        .cloud.color = (vec4){1.0, 0.0, 0.0, 1.0},
     };
 
     push_draw_cmd(r, &cmd);
