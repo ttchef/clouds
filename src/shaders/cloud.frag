@@ -43,8 +43,8 @@ layout (location = 0) out vec4 out_color;
 
 #define LIGHT_STEPS 6
 #define LIGHT_STEP_SIZE 0.3
-#define EXTINCTION 8.0
-#define SCATTERING 6.0
+#define EXTINCTION 16.0
+#define SCATTERING 6.7
 #define HG_G 0.6 // henyes greenstein anisotropy (0 isotropic - 1 ansiotropy)
 #define DENSITY_THRESHOLD 0.3
 #define DUAL_LOP_COEFF 0.7
@@ -63,7 +63,7 @@ vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
 }
 
 float sample_density(vec3 p) {
-    vec3 uvw = (p + 1.0) * 0.5;
+    vec3 uvw = p + 0.5;
 
     vec3 wind0 = vec3(0.05, 0.0, 0.02);
     vec3 wind1 = vec3(-0.02, 0.0, 0.04);
@@ -84,7 +84,7 @@ float light_transmittance(vec3 p, vec3 light_dir) {
     for (int i = 0; i < LIGHT_STEPS; i++) {
         lp += light_dir * LIGHT_STEP_SIZE;
 
-        if (any(lessThan(lp, vec3(-1.0))) || any(greaterThan(lp, vec3(1.0)))) {
+        if (any(lessThan(lp, vec3(-0.5))) || any(greaterThan(lp, vec3(0.5)))) {
             break;
         }
         shadow += sample_density(lp) * LIGHT_STEP_SIZE;
@@ -152,8 +152,8 @@ void main() {
     vec3 sun_dir_ws = normalize(vec3(-0.5, -0.5, 0.0));
     vec3 sun_dir = normalize((inverse_model * vec4(sun_dir_ws, 0.0)).xyz);
 
-    vec3 box_min = vec3(-1.0);
-    vec3 box_max = vec3(1.0);
+    vec3 box_min = vec3(-0.5);
+    vec3 box_max = vec3(0.5);
 
     vec2 hit = intersect_box(ray_origin, ray_dir, box_min, box_max);
 

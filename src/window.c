@@ -93,3 +93,10 @@ void window_set_user_ptr(struct window *window, void *ptr) {
 void *window_get_user_ptr(struct window *window) { return window->user_ptr; }
 
 void window_poll_events() { glfwPollEvents(); }
+
+vec2 window_get_mouse_pos(struct window *window) {
+    f64 x, y;
+    glfwGetCursorPos(window->handle, &x, &y);
+
+    return (vec2){(f32)x, (f32)y};
+}

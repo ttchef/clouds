@@ -6,12 +6,16 @@
 #include <types.h>
 #include <window.h>
 
+struct renderer;
+
 struct camera {
     f32 speed;
     f32 sensitivity;
 
     f32 yaw;
     f32 pitch;
+
+    bool left_mouse_last;
 
     vec2 last_mouse;
     vec3 pos;
@@ -22,6 +26,7 @@ struct camera {
 
 void camera_init(struct camera *cam);
 
-void camera_update(struct camera *cam, struct window *window, f32 dt);
+void camera_update(struct renderer *r, struct camera *cam,
+                   struct window *window, f32 dt);
 
 #endif // CAMERA_H

@@ -24,6 +24,7 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
+#include "cloud.h"
 #include <darray.h>
 #include <full_types.h>
 #include <log.h>
@@ -391,6 +392,7 @@ bool renderer_init(struct renderer *r, struct window *window) {
     draw_init(&r->render_queue);
     camera_init(&r->camera);
     benchmark_init(&r->benchmark);
+    cloud_manager_init(&r->cloud_manager);
 
     r->models = darrayCreate(struct model);
     r->box_id = model_create_file(r, "assets/models/box.glb");
@@ -426,7 +428,7 @@ bool renderer_resize(struct renderer *r, u32 width, u32 height) {
 
 bool renderer_update(struct renderer *r, struct window *window, f32 dt) {
     light_sync_gpu(r);
-    camera_update(&r->camera, window, dt);
+    camera_update(r, &r->camera, window, dt);
     vk_pipeline_manager_check_reload(&r->init, &r->swapchain,
                                      &r->pipeline_manager);
     benchmark_update(&r->benchmark, dt);

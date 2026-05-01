@@ -1,4 +1,5 @@
 
+#include "cloud.h"
 #include "types.h"
 #include "vk/pipeline.h"
 #include <draw.h>
@@ -85,16 +86,22 @@ void draw_model_texture(struct renderer *r, vec3 pos, vec3 scale,
     push_draw_cmd(r, &cmd);
 }
 
-void draw_cloud(struct renderer *r, struct cloud cloud) {
-    if (cloud.render_bounding_box) {
-        draw_bounding_box(r, cloud.pos, cloud.scale,
-                          (vec4){0.0, 1.0, 0.0, 1.0});
+void draw_cloud(struct renderer *r, cloud_id cloud) {
+    struct cloud *c = cloud_get(r, cloud);
+    if (!c) {
+        return;
+    }
+
+    if (c->selected) {
+        draw_bounding_box(r, c->pos, c->scale, (vec4){0.0, 1.0, 0.0, 1.0});
+        draw_model_texture(r, c->pos, math_vec3_scale(c->scale, 0.2f),
+                           r->gizmo_id);
     }
 
     struct draw_cmd cmd = (struct draw_cmd){
         .type = DRAW_CMD_TYPE_CLOUD,
-        .pos = cloud.pos,
-        .scale = cloud.scale,
+        .pos = c->pos,
+        .scale = c->scale,
         .cloud.color = (vec4){1.0, 0.0, 0.0, 1.0},
     };
 

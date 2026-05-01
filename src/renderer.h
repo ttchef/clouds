@@ -12,6 +12,7 @@
 
 #include <benchmark.h>
 #include <camera.h>
+#include <cloud.h>
 #include <draw.h>
 #include <light.h>
 #include <model.h>
@@ -41,6 +42,7 @@ struct renderer {
 
     struct texture_manager texture_manager;
     struct light_manager light_manager;
+    struct cloud_manager cloud_manager;
 
     struct camera camera;
 

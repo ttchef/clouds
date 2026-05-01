@@ -76,6 +76,7 @@ vec3 math_vec3_cross(vec3 a, vec3 b);
 matrix math_matrix_identity();
 matrix math_matrix_translate(f32 x, f32 y, f32 z);
 matrix math_matrix_scale(f32 x, f32 y, f32 z);
+matrix math_matrix_inverse(matrix m);
 
 /* Angle in degrees */
 matrix math_matrix_rotate_2d(f32 angle);
