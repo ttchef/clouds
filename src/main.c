@@ -1,4 +1,5 @@
 
+#include "draw.h"
 #include "light.h"
 #include <log.h>
 #include <renderer.h>
@@ -95,6 +96,8 @@ i32 main(void) {
 
         draw_cloud(r, (vec3){0, 4, 0}, (vec3){1, 1, 1},
                    (vec4){0.0f, 1.0f, 0.0f, 1.0f});
+        draw_bounding_box(r, (vec3){0, 4, 0}, (vec3){1.1, 1.1, 1.1},
+                          (vec4){0.0f, 1.0f, 0.0f, 1.0f});
 
         renderer_draw(r, &window);
         window_poll_events();

@@ -27,6 +27,8 @@
 #include "benchmark.h"
 #include "light.h"
 #include "texture.h"
+#include "types.h"
+#include "vk/pipeline.h"
 #include "vk/swapchain.h"
 #include <darray.h>
 #include <full_types.h>
@@ -110,6 +112,26 @@ static bool create_pipelines(struct renderer *r) {
     }
 
     LOGM(API_DUMP, "created model texture pipeline");
+
+    vk_pipeline_set_shaders(&desc, "src/shaders/bounding.vert",
+                            "src/shaders/bounding.frag");
+
+    vk_pipeline_set_push_constant(&desc, sizeof(struct bounding_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    vk_pipeline_set_polygon_mode(&desc, VK_POLYGON_MODE_LINE);
+
+    r->bounding_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                         &r->pipeline_manager, &desc);
+    if (r->bounding_pip == NO_PIPELINE) {
+        return false;
+    }
+
+    LOGM(API_DUMP, "created bounding pipeline");
+
+    // enable back to normal
+    vk_pipeline_set_polygon_mode(&desc, VK_POLYGON_MODE_FILL);
 
     vk_pipeline_set_shaders(&desc, "src/shaders/cloud.vert",
                             "src/shaders/cloud.frag");

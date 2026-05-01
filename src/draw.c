@@ -1,4 +1,5 @@
 
+#include "types.h"
 #include "vk/pipeline.h"
 #include <draw.h>
 #include <full_types.h>
@@ -6,6 +7,7 @@
 #include <renderer.h>
 
 #include <string.h>
+#include <vulkan/vulkan_core.h>
 
 void draw_init(struct render_queue *render_queue) {
     render_queue->capacity = 4;
@@ -89,6 +91,18 @@ void draw_cloud(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
         .pos = pos,
         .scale = scale,
         .cloud.color = color,
+    };
+
+    push_draw_cmd(r, &cmd);
+}
+
+void draw_bounding_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_BOUNDING_BOX,
+        .pos = pos,
+        .scale = scale,
+        .bounding_box.color = color,
+        .bounding_box.id = r->box_id,
     };
 
     push_draw_cmd(r, &cmd);
@@ -275,6 +289,44 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                                VK_SHADER_STAGE_VERTEX_BIT |
                                    VK_SHADER_STAGE_FRAGMENT_BIT,
                                0, sizeof(struct cloud_pc), &push_constant);
+
+            VkDeviceSize offsets[] = {0};
+
+            vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
+                                   &r->models[r->box_id].vertex_buffer.handle,
+                                   offsets);
+            vkCmdBindIndexBuffer(data->cmd_buffer,
+                                 r->models[r->box_id].index_buffer.handle, 0,
+                                 VK_INDEX_TYPE_UINT16);
+
+            vkCmdDrawIndexed(data->cmd_buffer, r->models[r->box_id].n_index, 1,
+                             0, 0, 0);
+        } break;
+        case DRAW_CMD_TYPE_BOUNDING_BOX: {
+            if (shadow_pass) {
+                return;
+            }
+
+            struct vk_pipeline *bounding_pip =
+                vk_pipeline_manager_get(&r->pipeline_manager, r->bounding_pip);
+
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              bounding_pip->handle);
+
+            vkCmdBindDescriptorSets(
+                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                bounding_pip->layout, 0, 1,
+                &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
+
+            struct bounding_pc push_constant = {
+                .model = model,
+                .color = cmd->bounding_box.color,
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, bounding_pip->layout,
+                               VK_SHADER_STAGE_VERTEX_BIT |
+                                   VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(struct bounding_pc), &push_constant);
 
             VkDeviceSize offsets[] = {0};
 
