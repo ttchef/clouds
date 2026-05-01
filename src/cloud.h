@@ -16,12 +16,12 @@ struct cloud {
     vec3 pos;
     vec3 scale;
 
-    bool selected;
     bool valid;
 };
 
 struct cloud_manager {
     struct cloud clouds[MAX_CLOUDS];
+    cloud_id selected_cloud;
 };
 
 void cloud_manager_init(struct cloud_manager *manager);

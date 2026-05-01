@@ -22,6 +22,12 @@ static struct aabb collision_get_aabb(vec3 pos, vec3 scale) {
     };
 }
 
+// closest point p on segment [a, b]
+vec3 collision_closest_point_on_segment(vec3 a, vec3 b, vec3 p);
+
+bool collision_ray_capsule_intersect(vec3 ro, vec3 rd, vec3 seg_a, vec3 seg_b,
+                                     f32 radius, f32 *out);
+
 bool collision_ray_aabb_intersect(vec3 ro, vec3 rd, struct aabb box,
                                   float *out);
 

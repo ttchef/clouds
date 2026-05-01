@@ -52,6 +52,7 @@ vec2 math_vec2_scale(vec2 v, f32 scalar);
 vec2 math_vec2_rotate(vec2 v, f32 angle);
 
 f32 math_vec2_length(vec2 v);
+f32 math_vec2_len_sqrt(vec2 v);
 vec2 math_vec2_norm(vec2 v);
 f32 math_vec2_distance(vec2 a, vec2 b);
 f32 math_vec2_dot(vec2 a, vec2 b);
@@ -68,9 +69,11 @@ vec3 math_vec3_add(vec3 a, vec3 b);
 vec3 math_vec3_subtract(vec3 a, vec3 b);
 vec3 math_vec3_mul(vec3 a, vec3 b); // wedge product
 vec3 math_vec3_scale(vec3 v, f32 scalar);
+f32 math_vec3_len_sqrt(vec3 v);
 f32 math_vec3_length(vec3 v);
 vec3 math_vec3_norm(vec3 v);
 vec3 math_vec3_negate(vec3 v);
+f32 math_vec3_dot(vec3 a, vec3 b);
 vec3 math_vec3_cross(vec3 a, vec3 b);
 
 matrix math_matrix_identity();

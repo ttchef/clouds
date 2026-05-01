@@ -7,6 +7,7 @@
 
 void cloud_manager_init(struct cloud_manager *manager) {
     memset(manager, 0, sizeof(*manager));
+    manager->selected_cloud = NO_CLOUD;
 }
 
 cloud_id cloud_create(struct renderer *r, vec3 pos, vec3 scale) {

@@ -40,6 +40,8 @@ vec2 math_vec2_rotate(vec2 v, f32 angle) {
     };
 }
 
+f32 math_vec2_len_sqrt(vec2 v) { return v.x * v.x + v.y + v.y; }
+
 f32 math_vec2_length(vec2 v) { return sqrtf(v.x * v.x + v.y * v.y); }
 
 vec2 math_vec2_norm(vec2 v) {
@@ -110,6 +112,8 @@ vec3 math_vec3_scale(vec3 v, f32 scalar) {
     return (vec3){v.x * scalar, v.y * scalar, v.z * scalar};
 }
 
+f32 math_vec3_len_sqrt(vec3 v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
+
 f32 math_vec3_length(vec3 v) {
     return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
 }
@@ -125,6 +129,8 @@ vec3 math_vec3_norm(vec3 v) {
 }
 
 vec3 math_vec3_negate(vec3 v) { return (vec3){-v.x, -v.y, -v.z}; }
+
+f32 math_vec3_dot(vec3 a, vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 vec3 math_vec3_cross(vec3 a, vec3 b) {
     return (vec3){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,

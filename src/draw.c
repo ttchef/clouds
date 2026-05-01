@@ -92,7 +92,7 @@ void draw_cloud(struct renderer *r, cloud_id cloud) {
         return;
     }
 
-    if (c->selected) {
+    if (r->cloud_manager.selected_cloud == cloud) {
         draw_bounding_box(r, c->pos, c->scale, (vec4){0.0, 1.0, 0.0, 1.0});
         draw_model_texture(r, c->pos, math_vec3_scale(c->scale, 0.2f),
                            r->gizmo_id);
