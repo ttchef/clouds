@@ -189,6 +189,10 @@ static bool create_log_dev(struct vk_init *init) {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     };
 
+    VkPhysicalDeviceFeatures features = {
+        .fillModeNonSolid = VK_TRUE,
+    };
+
     VkPhysicalDeviceDescriptorIndexingFeatures indexing = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
         .runtimeDescriptorArray = VK_TRUE,
@@ -211,6 +215,7 @@ static bool create_log_dev(struct vk_init *init) {
         .queueCreateInfoCount = n_queues,
         .enabledExtensionCount = 1,
         .ppEnabledExtensionNames = device_exts,
+        .pEnabledFeatures = &features,
     };
 
     if (vkCreateDevice(init->phy_dev, &create_info, NULL, &init->dev) !=

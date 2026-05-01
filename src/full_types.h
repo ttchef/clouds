@@ -1,4 +1,5 @@
 
+#include "types.h"
 #include <cmath.h>
 
 // this file may only be included
@@ -27,4 +28,14 @@ struct cloud_pc {
 struct shadow_pc {
     matrix model;
     matrix light_space;
+};
+
+struct wireframe_pc {
+    matrix model;
+    vec4 color;
+};
+
+struct bounding_pc {
+    matrix model;
+    vec4 color;
 };

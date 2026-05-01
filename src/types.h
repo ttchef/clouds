@@ -30,5 +30,7 @@ struct model_color_pc;
 struct model_texture_pc;
 struct cloud_pc;
 struct shadow_pc;
+struct wireframe_pc;
+struct bounding_pc;
 
 #endif // TYPES_H

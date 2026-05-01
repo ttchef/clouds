@@ -284,7 +284,7 @@ static struct vk_pipeline build_pipeline(struct vk_init *init,
 
     VkPipelineInputAssemblyStateCreateInfo assembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .topology = desc->topology,
     };
 
     VkPipelineViewportStateCreateInfo viewport = {
@@ -480,6 +480,7 @@ struct vk_pipeline_desc vk_pipeline_desc_default(void) {
         .depth_write = VK_TRUE,
         .depth_compare_op = VK_COMPARE_OP_LESS,
         .color_attachment_count = 1,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
     };
 }
 
@@ -578,6 +579,11 @@ void vk_pipeline_set_vertex_input(struct vk_pipeline_desc *desc,
 
     desc->binding_count = bindings_count;
     desc->attribute_count = attribute_count;
+}
+
+void vk_pipeline_set_topology(struct vk_pipeline_desc *desc,
+                              VkPrimitiveTopology topology) {
+    desc->topology = topology;
 }
 
 void vk_pipeline_set_cull_mode(struct vk_pipeline_desc *desc,
