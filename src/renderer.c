@@ -122,9 +122,12 @@ static bool create_pipelines(struct renderer *r) {
 
     vk_pipeline_set_polygon_mode(&desc, VK_POLYGON_MODE_LINE);
 
-    r->bounding_pip = vk_pipeline_create(&r->init, &r->swapchain,
-                                         &r->pipeline_manager, &desc);
-    if (r->bounding_pip == NO_PIPELINE) {
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_NONE,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
+
+    r->wireframe_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                          &r->pipeline_manager, &desc);
+    if (r->wireframe_pip == NO_PIPELINE) {
         return false;
     }
 
@@ -139,8 +142,6 @@ static bool create_pipelines(struct renderer *r) {
     vk_pipeline_set_push_constant(&desc, sizeof(struct cloud_pc),
                                   VK_SHADER_STAGE_VERTEX_BIT |
                                       VK_SHADER_STAGE_FRAGMENT_BIT);
-    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_NONE,
-                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
     r->cloud_pip = vk_pipeline_create(&r->init, &r->swapchain,
                                       &r->pipeline_manager, &desc);

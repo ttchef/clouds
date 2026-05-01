@@ -94,10 +94,11 @@ i32 main(void) {
         draw_model_texture(r, (vec3){0.0, 3, -3.0f}, (vec3){10, 10, 10}, logo);
         draw_model_texture(r, (vec3){4.0, 3, -3.0f}, (vec3){1, 1, 1}, glibglob);
 
+        draw_wireframe(r, (vec3){0, 4, 0}, (vec3){1.1, 1.1, 1.1},
+                       (vec4){0.0f, 1.0f, 0.0f, 1.0f}, torus);
+
         draw_cloud(r, (vec3){0, 4, 0}, (vec3){1, 1, 1},
                    (vec4){0.0f, 1.0f, 0.0f, 1.0f});
-        draw_bounding_box(r, (vec3){0, 4, 0}, (vec3){1.1, 1.1, 1.1},
-                          (vec4){0.0f, 1.0f, 0.0f, 1.0f});
 
         renderer_draw(r, &window);
         window_poll_events();

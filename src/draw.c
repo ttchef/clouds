@@ -96,13 +96,14 @@ void draw_cloud(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
     push_draw_cmd(r, &cmd);
 }
 
-void draw_bounding_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
+void draw_wireframe(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
+                    model_id model) {
     struct draw_cmd cmd = (struct draw_cmd){
-        .type = DRAW_CMD_TYPE_BOUNDING_BOX,
+        .type = DRAW_CMD_TYPE_WIREFRAME,
         .pos = pos,
         .scale = scale,
-        .bounding_box.color = color,
-        .bounding_box.id = r->box_id,
+        .wireframe.color = color,
+        .wireframe.id = model,
     };
 
     push_draw_cmd(r, &cmd);
@@ -302,13 +303,13 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
             vkCmdDrawIndexed(data->cmd_buffer, r->models[r->box_id].n_index, 1,
                              0, 0, 0);
         } break;
-        case DRAW_CMD_TYPE_BOUNDING_BOX: {
+        case DRAW_CMD_TYPE_WIREFRAME: {
             if (shadow_pass) {
                 return;
             }
 
             struct vk_pipeline *bounding_pip =
-                vk_pipeline_manager_get(&r->pipeline_manager, r->bounding_pip);
+                vk_pipeline_manager_get(&r->pipeline_manager, r->wireframe_pip);
 
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                               bounding_pip->handle);
@@ -320,7 +321,7 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
 
             struct bounding_pc push_constant = {
                 .model = model,
-                .color = cmd->bounding_box.color,
+                .color = cmd->wireframe.color,
             };
 
             vkCmdPushConstants(data->cmd_buffer, bounding_pip->layout,
@@ -330,15 +331,16 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
 
             VkDeviceSize offsets[] = {0};
 
-            vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
-                                   &r->models[r->box_id].vertex_buffer.handle,
-                                   offsets);
-            vkCmdBindIndexBuffer(data->cmd_buffer,
-                                 r->models[r->box_id].index_buffer.handle, 0,
-                                 VK_INDEX_TYPE_UINT16);
+            vkCmdBindVertexBuffers(
+                data->cmd_buffer, 0, 1,
+                &r->models[cmd->wireframe.id].vertex_buffer.handle, offsets);
+            vkCmdBindIndexBuffer(
+                data->cmd_buffer,
+                r->models[cmd->wireframe.id].index_buffer.handle, 0,
+                VK_INDEX_TYPE_UINT16);
 
-            vkCmdDrawIndexed(data->cmd_buffer, r->models[r->box_id].n_index, 1,
-                             0, 0, 0);
+            vkCmdDrawIndexed(data->cmd_buffer,
+                             r->models[cmd->wireframe.id].n_index, 1, 0, 0, 0);
         } break;
         }
     }
