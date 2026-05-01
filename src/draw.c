@@ -109,6 +109,17 @@ void draw_wireframe(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
     push_draw_cmd(r, &cmd);
 }
 
+void draw_bounding_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_BOUNDING_BOX,
+        .pos = pos,
+        .scale = scale,
+        .bounding_box.color = color,
+    };
+
+    push_draw_cmd(r, &cmd);
+}
+
 void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                struct shadow_pc *shadow_pc) {
     struct render_queue *q = &r->render_queue;
@@ -308,26 +319,26 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                 return;
             }
 
-            struct vk_pipeline *bounding_pip =
+            struct vk_pipeline *wireframe_pip =
                 vk_pipeline_manager_get(&r->pipeline_manager, r->wireframe_pip);
 
             vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                              bounding_pip->handle);
+                              wireframe_pip->handle);
 
             vkCmdBindDescriptorSets(
                 data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                bounding_pip->layout, 0, 1,
+                wireframe_pip->layout, 0, 1,
                 &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
 
-            struct bounding_pc push_constant = {
+            struct wireframe_pc push_constant = {
                 .model = model,
                 .color = cmd->wireframe.color,
             };
 
-            vkCmdPushConstants(data->cmd_buffer, bounding_pip->layout,
+            vkCmdPushConstants(data->cmd_buffer, wireframe_pip->layout,
                                VK_SHADER_STAGE_VERTEX_BIT |
                                    VK_SHADER_STAGE_FRAGMENT_BIT,
-                               0, sizeof(struct bounding_pc), &push_constant);
+                               0, sizeof(struct wireframe_pc), &push_constant);
 
             VkDeviceSize offsets[] = {0};
 
@@ -341,6 +352,35 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
 
             vkCmdDrawIndexed(data->cmd_buffer,
                              r->models[cmd->wireframe.id].n_index, 1, 0, 0, 0);
+        } break;
+        case DRAW_CMD_TYPE_BOUNDING_BOX: {
+            if (shadow_pass) {
+                return;
+            }
+
+            struct vk_pipeline *bounding_pip =
+                vk_pipeline_manager_get(&r->pipeline_manager, r->bounding_pip);
+
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              bounding_pip->handle);
+
+            vkCmdBindDescriptorSets(
+                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                bounding_pip->layout, 0, 1,
+                &r->descriptors.sets[r->cmd.frame_idx], 0, NULL);
+
+            struct bounding_pc push_constant = {
+                .model = model,
+                .color = cmd->bounding_box.color,
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, bounding_pip->layout,
+                               VK_SHADER_STAGE_VERTEX_BIT |
+                                   VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(struct bounding_pc), &push_constant);
+
+            vkCmdDraw(data->cmd_buffer, 24, 1, 0, 0);
+
         } break;
         }
     }

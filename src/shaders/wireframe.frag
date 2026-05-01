@@ -45,4 +45,3 @@ void main() {
     out_color = vec4(color, pc.color.w);
 }
 
-

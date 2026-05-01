@@ -36,54 +36,19 @@
 #include <renderer.h>
 #include <vulkan/vulkan_core.h>
 
-static bool create_pipelines(struct renderer *r) {
-    VkVertexInputBindingDescription binding_desc = {
-        .binding = 0,
-        .stride = sizeof(f32) * 8,
-        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-    };
-
-    VkVertexInputAttributeDescription attrib_desc[] = {
-        {
-            .binding = 0,
-            .location = 0,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-        },
-        {
-            .binding = 0,
-            .location = 1,
-            .format = VK_FORMAT_R32G32_SFLOAT,
-            .offset = sizeof(f32) * 3,
-        },
-        {
-            .binding = 0,
-            .location = 2,
-            .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = sizeof(f32) * 5,
-        },
-    };
+static bool create_model_color_and_texture_pipelines(
+    struct renderer *r, VkVertexInputBindingDescription *bindings,
+    u32 binding_count, VkVertexInputAttributeDescription *attributes,
+    u32 attribute_count, VkPipelineColorBlendAttachmentState *blending,
+    u32 blend_count) {
 
     struct vk_pipeline_desc desc = vk_pipeline_desc_default();
 
-    VkPipelineColorBlendAttachmentState color_blend_attachment = {
-        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-        .blendEnable = VK_TRUE,
-        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
-        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-        .colorBlendOp = VK_BLEND_OP_ADD,
-        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
-        .alphaBlendOp = VK_BLEND_OP_ADD,
-    };
-
-    // general description matching all pipelines
-    vk_pipeline_set_blend_state(&desc, &color_blend_attachment, 1);
-    vk_pipeline_set_vertex_input(&desc, &binding_desc, 1, attrib_desc,
-                                 ARRAY_COUNT(attrib_desc));
+    vk_pipeline_set_blend_state(&desc, blending, blend_count);
+    vk_pipeline_set_vertex_input(&desc, bindings, binding_count, attributes,
+                                 attribute_count);
     vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
 
-    // custom description
     vk_pipeline_set_shaders(&desc, "src/shaders/model_color.vert",
                             "src/shaders/model_color.frag");
     vk_pipeline_set_push_constant(&desc, sizeof(struct model_color_pc),
@@ -113,10 +78,28 @@ static bool create_pipelines(struct renderer *r) {
 
     LOGM(API_DUMP, "created model texture pipeline");
 
-    vk_pipeline_set_shaders(&desc, "src/shaders/bounding.vert",
-                            "src/shaders/bounding.frag");
+    return true;
+}
 
-    vk_pipeline_set_push_constant(&desc, sizeof(struct bounding_pc),
+static bool create_wireframe_pip(struct renderer *r,
+                                 VkVertexInputBindingDescription *bindings,
+                                 u32 binding_count,
+                                 VkVertexInputAttributeDescription *attributes,
+                                 u32 attribute_count,
+                                 VkPipelineColorBlendAttachmentState *blending,
+                                 u32 blend_count) {
+
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
+
+    vk_pipeline_set_blend_state(&desc, blending, blend_count);
+    vk_pipeline_set_vertex_input(&desc, bindings, binding_count, attributes,
+                                 attribute_count);
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+
+    vk_pipeline_set_shaders(&desc, "src/shaders/wireframe.vert",
+                            "src/shaders/wireframe.frag");
+
+    vk_pipeline_set_push_constant(&desc, sizeof(struct wireframe_pc),
                                   VK_SHADER_STAGE_VERTEX_BIT |
                                       VK_SHADER_STAGE_FRAGMENT_BIT);
 
@@ -133,8 +116,22 @@ static bool create_pipelines(struct renderer *r) {
 
     LOGM(API_DUMP, "created bounding pipeline");
 
-    // enable back to normal
-    vk_pipeline_set_polygon_mode(&desc, VK_POLYGON_MODE_FILL);
+    return true;
+}
+
+static bool create_cloud_pip(struct renderer *r,
+                             VkVertexInputBindingDescription *bindings,
+                             u32 binding_count,
+                             VkVertexInputAttributeDescription *attributes,
+                             u32 attribute_count,
+                             VkPipelineColorBlendAttachmentState *blending,
+                             u32 blend_count) {
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
+
+    vk_pipeline_set_blend_state(&desc, blending, blend_count);
+    vk_pipeline_set_vertex_input(&desc, bindings, binding_count, attributes,
+                                 attribute_count);
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
 
     vk_pipeline_set_shaders(&desc, "src/shaders/cloud.vert",
                             "src/shaders/cloud.frag");
@@ -174,6 +171,23 @@ static bool create_pipelines(struct renderer *r) {
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
 
+    return true;
+}
+
+static bool create_skybox_pip(struct renderer *r,
+                              VkVertexInputBindingDescription *bindings,
+                              u32 binding_count,
+                              VkVertexInputAttributeDescription *attributes,
+                              u32 attribute_count,
+                              VkPipelineColorBlendAttachmentState *blending,
+                              u32 blend_count) {
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
+
+    vk_pipeline_set_blend_state(&desc, blending, blend_count);
+    vk_pipeline_set_vertex_input(&desc, bindings, binding_count, attributes,
+                                 attribute_count);
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+
     vk_pipeline_set_shaders(&desc, "src/shaders/skybox.vert",
                             "src/shaders/skybox.frag");
     vk_pipeline_set_push_constant(&desc, 0, 0);
@@ -188,18 +202,20 @@ static bool create_pipelines(struct renderer *r) {
         return false;
     }
 
+    LOGM(API_DUMP, "created skybox pipeline");
+
     // TODO: move out into a good function
     // skybox cube map
     vk_image_create_cube_map(&r->init, &r->skybox,
                              "assets/skyboxes/planet.hdr");
 
-    image_info = (VkDescriptorImageInfo){
+    VkDescriptorImageInfo image_info = {
         .sampler = r->samplers.texture_sampler.handle,
         .imageView = r->skybox.view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
 
-    write = (VkWriteDescriptorSet){
+    VkWriteDescriptorSet write = {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .pImageInfo = &image_info,
         .dstBinding = GLOBAL_DESC_SKYBOX_BINDING,
@@ -210,6 +226,107 @@ static bool create_pipelines(struct renderer *r) {
     for (i32 i = 0; i < FRAMES_IN_FLIGHT; i++) {
         write.dstSet = r->descriptors.sets[i];
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
+    }
+
+    return true;
+}
+
+static bool create_bounding_pip(struct renderer *r,
+                                VkPipelineColorBlendAttachmentState *blending,
+                                u32 blend_count) {
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
+
+    vk_pipeline_set_blend_state(&desc, blending, blend_count);
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+
+    vk_pipeline_set_shaders(&desc, "src/shaders/bounding.vert",
+                            "src/shaders/bounding.frag");
+
+    vk_pipeline_set_topology(&desc, VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+
+    vk_pipeline_set_push_constant(&desc, sizeof(struct bounding_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_NONE,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
+
+    r->bounding_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                         &r->pipeline_manager, &desc);
+    if (r->bounding_pip == NO_PIPELINE) {
+        return false;
+    }
+
+    LOGM(API_DUMP, "created bounding pipeline");
+
+    return true;
+}
+
+static bool create_pipelines(struct renderer *r) {
+    VkVertexInputBindingDescription binding_desc = {
+        .binding = 0,
+        .stride = sizeof(f32) * 8,
+        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+    };
+
+    VkVertexInputAttributeDescription attrib_desc[] = {
+        {
+            .binding = 0,
+            .location = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+        },
+        {
+            .binding = 0,
+            .location = 1,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = sizeof(f32) * 3,
+        },
+        {
+            .binding = 0,
+            .location = 2,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = sizeof(f32) * 5,
+        },
+    };
+
+    VkPipelineColorBlendAttachmentState color_blend_attachment = {
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        .blendEnable = VK_TRUE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+    };
+
+    if (!create_model_color_and_texture_pipelines(
+            r, &binding_desc, 1, attrib_desc, ARRAY_COUNT(attrib_desc),
+            &color_blend_attachment, 1)) {
+        return false;
+    }
+
+    if (!create_wireframe_pip(r, &binding_desc, 1, attrib_desc,
+                              ARRAY_COUNT(attrib_desc), &color_blend_attachment,
+                              1)) {
+        return false;
+    }
+
+    if (!create_cloud_pip(r, &binding_desc, 1, attrib_desc,
+                          ARRAY_COUNT(attrib_desc), &color_blend_attachment,
+                          1)) {
+        return false;
+    }
+
+    if (!create_skybox_pip(r, &binding_desc, 1, attrib_desc,
+                           ARRAY_COUNT(attrib_desc), &color_blend_attachment,
+                           1)) {
+        return false;
+    }
+
+    if (!create_bounding_pip(r, &color_blend_attachment, 1)) {
+        return false;
     }
 
     return true;

@@ -35,6 +35,7 @@ struct vk_pipeline_desc {
     u32 binding_count;
     VkVertexInputAttributeDescription attributes[MAX_ATTRIBUTE_COUNT];
     u32 attribute_count;
+    VkPrimitiveTopology topology;
 
     // rasterization
     VkPolygonMode polygon_mode;
@@ -126,6 +127,9 @@ void vk_pipeline_set_vertex_input(struct vk_pipeline_desc *desc,
                                   u32 bindings_count,
                                   VkVertexInputAttributeDescription *attributes,
                                   u32 attribute_count);
+
+void vk_pipeline_set_topology(struct vk_pipeline_desc *desc,
+                              VkPrimitiveTopology topology);
 
 void vk_pipeline_set_cull_mode(struct vk_pipeline_desc *desc,
                                VkCullModeFlags cull_mode,

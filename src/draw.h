@@ -47,6 +47,10 @@ struct draw_cmd {
             model_id id;
             vec4 color;
         } wireframe;
+
+        struct {
+            vec4 color;
+        } bounding_box;
     };
 };
 
@@ -72,6 +76,8 @@ void draw_cloud(struct renderer *r, vec3 pos, vec3 scale, vec4 color);
 
 void draw_wireframe(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
                     model_id model);
+
+void draw_bounding_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color);
 
 void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                struct shadow_pc *shadow_pc);

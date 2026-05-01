@@ -30,6 +30,11 @@ struct shadow_pc {
     matrix light_space;
 };
 
+struct wireframe_pc {
+    matrix model;
+    vec4 color;
+};
+
 struct bounding_pc {
     matrix model;
     vec4 color;
