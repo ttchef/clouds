@@ -29,7 +29,9 @@ bool vk_image_create(struct vk_init *init, struct vk_image *image, u32 width,
 bool vk_image_create_cube_map(struct vk_init *init, struct vk_image *image,
                               const char *path);
 
-bool vk_image_create_noise(struct vk_init *init, struct vk_image *image);
+// 3D image
+bool vk_image_create_noise(struct vk_init *init, f32 *noise, u32 noise_size,
+                           struct vk_image *image);
 
 bool vk_image_transition(struct vk_init *init, struct vk_image *image,
                          VkImageLayout old_layout, VkImageLayout new_layout,

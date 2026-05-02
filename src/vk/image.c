@@ -6,7 +6,6 @@
 #include <cmath.h>
 #include <log.h>
 
-#include <FastNoiseLite/FastNoiseLite.h>
 #include <stbi/stb_image.h>
 
 enum {
@@ -200,35 +199,17 @@ bool vk_image_create_cube_map(struct vk_init *init, struct vk_image *image,
     return true;
 }
 
-bool vk_image_create_noise(struct vk_init *init, struct vk_image *image) {
-    fnl_state noise = fnlCreateState();
-    noise.noise_type = FNL_NOISE_PERLIN;
-    noise.frequency = 0.25f;
-
-    const u32 noise_size = 64;
-
-    u32 data_size = noise_size * noise_size * noise_size * sizeof(f32);
-    f32 *data = malloc(data_size);
-    i32 index = 0;
-
-    for (u32 z = 0; z < noise_size; z++) {
-        for (u32 y = 0; y < noise_size; y++) {
-            for (u32 x = 0; x < noise_size; x++) {
-                data[index++] = fnlGetNoise3D(&noise, x, y, z) * 0.5f + 0.5f;
-            }
-        }
-    }
-
+bool vk_image_create_noise(struct vk_init *init, f32 *noise, u32 noise_size,
+                           struct vk_image *image) {
     vk_image_create(
         init, image, noise_size, noise_size, noise_size, VK_FORMAT_R32_SFLOAT,
         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         IMAGE_TYPE_3D);
-    vk_image_upload_data(init, image, data_size, data, noise_size, noise_size,
-                         noise_size, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    vk_image_upload_data(init, image,
+                         noise_size * noise_size * noise_size * sizeof(f32),
+                         noise, noise_size, noise_size, noise_size,
+                         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT, NULL);
-
-    free(data);
-
     return true;
 }
 

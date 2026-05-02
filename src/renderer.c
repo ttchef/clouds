@@ -24,11 +24,10 @@
 // deployment tasks and track progress across 4–6 sprints with defined
 // deliverables and acceptance criteria. (~ by cheesecake)
 
-#include "cloud.h"
-#include "vk/pipeline.h"
 #include <darray.h>
 #include <full_types.h>
 #include <log.h>
+#include <noise.h>
 #include <renderer.h>
 #include <vulkan/vulkan_core.h>
 
@@ -148,9 +147,10 @@ static bool create_cloud_pip(struct renderer *r,
 
     LOGM(API_DUMP, "created cloud pipeline");
 
-    // TODO: move out into another function
-    // cloud noise image
-    vk_image_create_noise(&r->init, &r->noise);
+    u32 noise_size = 128;
+    f32 *noise = malloc(noise_size * noise_size * noise_size * sizeof(f32));
+    noise_gen_perlin_worly(noise, noise_size, NOISE_TYPE_3D);
+    vk_image_create_noise(&r->init, noise, noise_size, &r->noise);
 
     VkDescriptorImageInfo image_info = {
         .sampler = r->samplers.texture_sampler.handle,
@@ -170,6 +170,8 @@ static bool create_cloud_pip(struct renderer *r,
         write.dstSet = r->descriptors.sets[i];
         vkUpdateDescriptorSets(r->init.dev, 1, &write, 0, NULL);
     }
+
+    free(noise);
 
     return true;
 }
