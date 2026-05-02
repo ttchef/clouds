@@ -49,6 +49,12 @@ layout (location = 0) out vec4 out_color;
 #define DENSITY_THRESHOLD 0.3
 #define DUAL_LOP_COEFF 0.7
 
+vec3 cloud_scale = vec3(
+    length(pc.model[0].xyz),
+    length(pc.model[1].xyz),
+    length(pc.model[2].xyz)
+);
+
 vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
     vec3 t0 = (box_min - ray_origin) / ray_dir;
     vec3 t1 = (box_max - ray_origin) / ray_dir;
@@ -62,8 +68,9 @@ vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
     return vec2(entry, exit);
 }
 
-float sample_density(vec3 p) {
-    vec3 uvw = p + 0.5;
+float sample_density(vec3 p, vec3 scale) {
+    vec3 uvw = p * scale / max(max(scale.x, scale.y), scale.z);
+    uvw += 0.5;
 
     vec3 wind0 = vec3(0.05, 0.0, 0.02);
     vec3 wind1 = vec3(-0.02, 0.0, 0.04);
@@ -77,7 +84,7 @@ float sample_density(vec3 p) {
     return d;
 }
 
-float light_transmittance(vec3 p, vec3 light_dir) {
+float light_transmittance(vec3 p, vec3 light_dir, vec3 scale) {
     float shadow = 0.0;
     vec3 lp = p;
 
@@ -87,7 +94,7 @@ float light_transmittance(vec3 p, vec3 light_dir) {
         if (any(lessThan(lp, vec3(-0.5))) || any(greaterThan(lp, vec3(0.5)))) {
             break;
         }
-        shadow += sample_density(lp) * LIGHT_STEP_SIZE;
+        shadow += sample_density(lp, scale) * LIGHT_STEP_SIZE;
     }
     return exp(-shadow * EXTINCTION);
 }
@@ -180,7 +187,7 @@ void main() {
     while (t < end) {
         vec3 p = ray_origin + t * ray_dir;
 
-        float d = sample_density(p);
+        float d = sample_density(p, cloud_scale);
         d = max(0.0, d - DENSITY_THRESHOLD);
 
         if (!in_cloud && d < 0.001) {
@@ -194,7 +201,7 @@ void main() {
         // Beer lamber law
         float absorb = beer_lambert(d, step_size);
 
-        float light = light_transmittance(p, sun_dir);
+        float light = light_transmittance(p, sun_dir, cloud_scale);
         vec3 lighting = multi_scatter(cos_theta, sun_color, light) + 0.15 * ambient_color;
         
         vec3 scattering = d * SCATTERING * step_size * transmittance * lighting;

@@ -1,5 +1,6 @@
 
 #include "cloud.h"
+#include "cmath.h"
 #include "types.h"
 #include "vk/pipeline.h"
 #include <draw.h>
@@ -108,7 +109,12 @@ void draw_cloud(struct renderer *r, cloud_id cloud) {
 
     if (r->cloud_manager.selected_cloud == cloud) {
         // always on top of the cloud
-        draw_gizmo(r, c->pos, math_vec3_scale(c->scale, 0.8f));
+
+        f32 dist = math_vec3_length(math_vec3_subtract(c->pos, r->camera.pos));
+        f32 gs = dist * 0.15f;
+        vec3 gizmo_scale = (vec3){gs, gs, gs};
+
+        draw_gizmo(r, c->pos, gizmo_scale);
     }
 }
 
