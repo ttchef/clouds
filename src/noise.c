@@ -93,7 +93,6 @@ void noise_gen_fbm_perlin(f32 *data, u32 size, u32 dimensions) {
                         val = (fnlGetNoise2D(&noise, x, y) + 1.0f) * 0.5f;
                     }
 
-                    val = 1.0f - val;
                     val -= 0.1f;
                     val *= amplitude;
 
@@ -139,11 +138,13 @@ void noise_gen_perlin_worly(f32 *data, u32 size, u32 dimensions) {
     noise_gen_fbm_perlin(perlin, size, dimensions);
 
     u32 index = 0;
-    for (u32 y = 0; y < size; y++) {
-        for (u32 x = 0; x < size; x++) {
-            u32 i = y * size + x;
-            f32 val = (1.0f - WEIGHT) * perlin[i] + WEIGHT * worly[i];
-            data[index++] = val;
+    for (u32 z = 0; z < ((dimensions == NOISE_TYPE_3D) ? size : 1); z++) {
+        for (u32 y = 0; y < size; y++) {
+            for (u32 x = 0; x < size; x++) {
+                u32 i = (z * size * size) + (y * size) + x;
+                f32 val = (1.0f - WEIGHT) * perlin[i] + WEIGHT * worly[i];
+                data[index++] = val;
+            }
         }
     }
 

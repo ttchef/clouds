@@ -43,7 +43,7 @@ layout (location = 0) out vec4 out_color;
 
 #define LIGHT_STEPS 6
 #define LIGHT_STEP_SIZE 0.3
-#define EXTINCTION 16.0
+#define EXTINCTION 2.0
 #define SCATTERING 6.7
 #define HG_G 0.6 // henyes greenstein anisotropy (0 isotropic - 1 ansiotropy)
 #define DENSITY_THRESHOLD 0.3
@@ -69,17 +69,17 @@ vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
 }
 
 float sample_density(vec3 p, vec3 scale) {
-    vec3 uvw = p * scale / max(max(scale.x, scale.y), scale.z);
-    uvw += 0.5;
+  vec3 tile_scale = scale / min(min(scale.x, scale.y), scale.z); 
+vec3 uvw = (p + 0.5) * tile_scale;
 
     vec3 wind0 = vec3(0.05, 0.0, 0.02);
     vec3 wind1 = vec3(-0.02, 0.0, 0.04);
         
     float d = 0.0;
 
-    d += 0.6 * texture(u_noise, uvw * 0.5 + wind0 * pc.time * 2.0).r;
-    d += 0.3 * texture(u_noise, uvw * 1.0 + wind1 * pc.time * 1.5).r;
-    d += 0.1 * texture(u_noise, uvw * 2.0 - wind0 * pc.time * 5.5).r;
+    d += 1 * texture(u_noise, uvw * 0.5 + wind0 * pc.time * 2.0).r;
+    // d += 0.3 * texture(u_noise, uvw * 1.0 + wind1 * pc.time * 1.5).r;
+    // d += 0.1 * texture(u_noise, uvw * 2.0 - wind0 * pc.time * 5.5).r;
     
     return d;
 }
@@ -190,10 +190,10 @@ void main() {
         float d = sample_density(p, cloud_scale);
         d = max(0.0, d - DENSITY_THRESHOLD);
 
-        if (!in_cloud && d < 0.001) {
-            t += big_step;
-            continue;
-        }
+        // if (!in_cloud && d < 0.001) {
+            // t += big_step;
+            // continue;
+        // }
 
         in_cloud = true;
         t += step_size;
@@ -201,12 +201,12 @@ void main() {
         // Beer lamber law
         float absorb = beer_lambert(d, step_size);
 
-        float light = light_transmittance(p, sun_dir, cloud_scale);
-        vec3 lighting = multi_scatter(cos_theta, sun_color, light) + 0.15 * ambient_color;
+        // float light = light_transmittance(p, sun_dir, cloud_scale);
+        // vec3 lighting = multi_scatter(cos_theta, sun_color, light) + 0.15 * ambient_color;
         
-        vec3 scattering = d * SCATTERING * step_size * transmittance * lighting;
+        // vec3 scattering = d * SCATTERING * step_size * transmittance * lighting;
 
-        col += scattering;
+        col += d * SCATTERING * step_size * transmittance * pc.color.xyz;
         transmittance *= absorb;
 
         if (transmittance < 0.01) {
