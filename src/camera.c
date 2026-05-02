@@ -1,5 +1,7 @@
 
 #include "cloud.h"
+#include "cmath.h"
+#include "gizmo.h"
 #include <camera.h>
 #include <collision.h>
 #include <log.h>
@@ -78,9 +80,51 @@ void camera_update(struct renderer *r, struct camera *cam,
         vec3 ray_dir = collision_screen_to_ray(
             mouse, window->width, window->height, inverse_view, inverse_proj);
 
-        f32 t;
         struct cloud_manager *m = &r->cloud_manager;
 
+        if (m->selected_cloud != NO_CLOUD) {
+            struct cloud *c = &m->clouds[m->selected_cloud];
+            struct gizmo *g = &c->gizmo;
+
+            g->active_axis = GIZMO_AXIS_NONE;
+
+            f32 best = 1e9f;
+
+            for (u32 i = 0; i < 3; i++) {
+                f32 t;
+
+                if (collision_ray_capsule_intersect(
+                        cam->pos, ray_dir, g->hitboxes[i].start,
+                        g->hitboxes[i].end, g->hitboxes[i].radius, &t)) {
+                    if (t < best) {
+                        best = t;
+                        g->active_axis = g->hitboxes[i].axis;
+                        LOGM(HIGHLITE, "Collision: %d", g->active_axis);
+                    }
+                }
+            }
+
+            if (g->active_axis != GIZMO_AXIS_NONE) {
+                g->drag_start =
+                    math_vec3_add(cam->pos, math_vec3_scale(ray_dir, best));
+
+                vec3 axis = {
+                    .x = g->active_axis == GIZMO_AXIS_X ? 1.0f : 0.0f,
+                    .y = g->active_axis == GIZMO_AXIS_Y ? 1.0f : 0.0f,
+                    .z = g->active_axis == GIZMO_AXIS_Z ? 1.0f : 0.0f,
+                };
+
+                f32 proj = math_vec3_dot(cam->direction, axis);
+                vec3 normal = math_vec3_subtract(cam->direction,
+                                                 math_vec3_scale(axis, proj));
+
+                g->draw_plane_normal = math_vec3_norm(normal);
+
+                goto done;
+            }
+        }
+
+        f32 t;
         for (u32 i = 0; i < MAX_CLOUDS; i++) {
             struct cloud *c = &m->clouds[i];
             if (!c->valid)
@@ -95,6 +139,56 @@ void camera_update(struct renderer *r, struct camera *cam,
                     m->selected_cloud = i;
                 }
                 break;
+            }
+        }
+
+    done:
+    }
+
+    if (left_mouse_now && cam->left_mouse_last) {
+        struct cloud_manager *m = &r->cloud_manager;
+
+        if (m->selected_cloud != NO_CLOUD) {
+            struct cloud *c = &m->clouds[m->selected_cloud];
+            struct gizmo *g = &c->gizmo;
+
+            if (g->active_axis != GIZMO_AXIS_NONE) {
+                LOGM(HIGHLITE, "DRAG");
+
+                vec3 axis = {
+                    .x = g->active_axis == GIZMO_AXIS_X ? 1.0f : 0.0f,
+                    .y = g->active_axis == GIZMO_AXIS_Y ? 1.0f : 0.0f,
+                    .z = g->active_axis == GIZMO_AXIS_Z ? 1.0f : 0.0f,
+                };
+
+                // TODO: optimize so no need to recompute these
+                matrix inverse_view =
+                    math_matrix_inverse(r->matrix_ubo.data.view);
+                matrix inverse_proj =
+                    math_matrix_inverse(r->matrix_ubo.data.proj);
+
+                vec2 mouse = window_get_mouse_pos(window);
+                vec3 ray_dir = collision_screen_to_ray(
+                    mouse, window->width, window->height, inverse_view,
+                    inverse_proj);
+
+                f32 t;
+                if (collision_ray_plane_intersect(cam->pos, ray_dir, c->pos,
+                                                  g->draw_plane_normal, &t)) {
+                    vec3 hit =
+                        math_vec3_add(cam->pos, math_vec3_scale(ray_dir, t));
+
+                    vec3 diff = math_vec3_subtract(hit, g->drag_start);
+                    f32 delta = math_vec3_dot(diff, axis);
+
+                    c->pos =
+                        math_vec3_add(c->pos, math_vec3_scale(axis, delta));
+
+                    g->drag_start = math_vec3_add(g->drag_start,
+                                                  math_vec3_scale(axis, delta));
+
+                    cloud_update_gizmo(r, m->selected_cloud);
+                }
             }
         }
     }

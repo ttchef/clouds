@@ -147,6 +147,17 @@ bool collision_ray_aabb_intersect(vec3 ro, vec3 rd, struct aabb box,
     return true;
 }
 
+bool collision_ray_plane_intersect(vec3 ro, vec3 rd, vec3 plane_point,
+                                   vec3 plane_normal, f32 *out) {
+    f32 denom = math_vec3_dot(rd, plane_normal);
+    if (fabsf(denom) < 1e-6f)
+        return false;
+
+    vec3 diff = math_vec3_subtract(plane_point, ro);
+    *out = math_vec3_dot(diff, plane_normal) / denom;
+    return *out >= 0.0f;
+}
+
 vec3 collision_screen_to_ray(vec2 mouse, u32 screen_width, u32 screen_height,
                              matrix invers_view, matrix inverse_proj) {
     // ndc

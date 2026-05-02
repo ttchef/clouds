@@ -3,6 +3,7 @@
 #define CLOUD_H
 
 #include <cmath.h>
+#include <gizmo.h>
 #include <types.h>
 
 #define MAX_CLOUDS 10
@@ -15,7 +16,7 @@ struct renderer;
 struct cloud {
     vec3 pos;
     vec3 scale;
-
+    struct gizmo gizmo;
     bool valid;
 };
 
@@ -27,6 +28,8 @@ struct cloud_manager {
 void cloud_manager_init(struct cloud_manager *manager);
 
 cloud_id cloud_create(struct renderer *r, vec3 pos, vec3 scale);
+
+void cloud_update_gizmo(struct renderer *r, cloud_id cloud);
 
 struct cloud *cloud_get(struct renderer *r, cloud_id cloud);
 

@@ -31,6 +31,9 @@ bool collision_ray_capsule_intersect(vec3 ro, vec3 rd, vec3 seg_a, vec3 seg_b,
 bool collision_ray_aabb_intersect(vec3 ro, vec3 rd, struct aabb box,
                                   float *out);
 
+bool collision_ray_plane_intersect(vec3 ro, vec3 rd, vec3 plane_point,
+                                   vec3 plane_normal, f32 *out);
+
 vec3 collision_screen_to_ray(vec2 mouse, u32 screen_width, u32 screen_height,
                              matrix invers_view, matrix inverse_proj);
 

@@ -107,7 +107,8 @@ void draw_cloud(struct renderer *r, cloud_id cloud) {
     push_draw_cmd(r, &cmd);
 
     if (r->cloud_manager.selected_cloud == cloud) {
-        draw_gizmo(r, c->pos, math_vec3_scale(c->scale, 0.2f));
+        // always on top of the cloud
+        draw_gizmo(r, c->pos, math_vec3_scale(c->scale, 0.8f));
     }
 }
 
