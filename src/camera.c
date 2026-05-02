@@ -156,11 +156,10 @@ void camera_update(struct renderer *r, struct camera *cam,
                 continue;
 
             struct aabb box = collision_get_aabb(c->pos, c->scale);
+            m->selected_cloud = NO_CLOUD;
 
             if (collision_ray_aabb_intersect(cam->pos, ray_dir, box, &t)) {
-                if (m->selected_cloud == (i32)i) {
-                    m->selected_cloud = NO_CLOUD;
-                } else {
+                if (m->selected_cloud != (i32)i) {
                     m->selected_cloud = i;
                 }
                 break;
