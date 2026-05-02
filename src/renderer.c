@@ -128,6 +128,7 @@ static bool create_cloud_pip(struct renderer *r,
     vk_pipeline_set_vertex_input(&desc, bindings, binding_count, attributes,
                                  attribute_count);
     vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+    vk_pipeline_set_depth_state(&desc, VK_FALSE, VK_TRUE, VK_COMPARE_OP_LESS);
 
     vk_pipeline_set_shaders(&desc, "src/shaders/cloud.vert",
                             "src/shaders/cloud.frag");
@@ -135,6 +136,9 @@ static bool create_cloud_pip(struct renderer *r,
     vk_pipeline_set_push_constant(&desc, sizeof(struct cloud_pc),
                                   VK_SHADER_STAGE_VERTEX_BIT |
                                       VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    vk_pipeline_set_cull_mode(&desc, VK_CULL_MODE_NONE,
+                              VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
     r->cloud_pip = vk_pipeline_create(&r->init, &r->swapchain,
                                       &r->pipeline_manager, &desc);

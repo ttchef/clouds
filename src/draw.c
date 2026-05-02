@@ -95,7 +95,6 @@ void draw_cloud(struct renderer *r, cloud_id cloud) {
 
     if (r->cloud_manager.selected_cloud == cloud) {
         draw_bounding_box(r, c->pos, c->scale, (vec4){0.0, 1.0, 0.0, 1.0});
-        draw_gizmo(r, c->pos, math_vec3_scale(c->scale, 0.2f));
     }
 
     struct draw_cmd cmd = (struct draw_cmd){
@@ -307,7 +306,7 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
         }; break;
         case DRAW_CMD_TYPE_CLOUD: {
             if (shadow_pass) {
-                return;
+                break;
             }
 
             struct vk_pipeline *cloud_pip =
@@ -348,7 +347,7 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
         } break;
         case DRAW_CMD_TYPE_WIREFRAME: {
             if (shadow_pass) {
-                return;
+                break;
             }
 
             struct vk_pipeline *wireframe_pip =
@@ -387,7 +386,7 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
         } break;
         case DRAW_CMD_TYPE_BOUNDING_BOX: {
             if (shadow_pass) {
-                return;
+                break;
             }
 
             struct vk_pipeline *bounding_pip =
@@ -416,7 +415,7 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
         } break;
         case DRAW_CMD_TYPE_GIZMO: {
             if (shadow_pass) {
-                return;
+                break;
             }
 
             struct vk_pipeline *gizmo_pip =

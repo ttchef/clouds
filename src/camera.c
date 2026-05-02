@@ -209,7 +209,6 @@ void camera_update(struct renderer *r, struct camera *cam,
 
                     vec3 diff = math_vec3_subtract(hit, g->drag_start);
                     f32 delta = math_vec3_dot(diff, axis);
-                    delta = math_clamp(delta, -10.0f, 10.0f);
 
                     if (g->mode == GIZMO_MODE_TRANSLATE) {
                         c->pos =

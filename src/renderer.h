@@ -14,6 +14,7 @@
 #include <camera.h>
 #include <cloud.h>
 #include <draw.h>
+#include <gizmo.h>
 #include <light.h>
 #include <model.h>
 #include <texture.h>

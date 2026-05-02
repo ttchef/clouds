@@ -65,7 +65,8 @@ i32 main(void) {
 
     light_set_render(r, true);
 
-    cloud_id cloud = cloud_create(r, (vec3){0, 4, 0}, (vec3){2.0, 2.0, 2.0});
+    cloud_id cloud0 = cloud_create(r, (vec3){0, 4, 0}, (vec3){2.0, 2.0, 2.0});
+    cloud_id cloud1 = cloud_create(r, (vec3){0, 10, 0}, (vec3){2.0, 2.0, 2.0});
 
     f32 last_time = window_get_time();
     while (!window_should_close(&window)) {
@@ -101,7 +102,9 @@ i32 main(void) {
 
         // draw_wireframe(r, (vec3){0, 4, 0}, (vec3){1.1, 1.1, 1.1},
         // (vec4){0.0f, 1.0f, 0.0f, 1.0f}, glibglob);
-        draw_cloud(r, cloud);
+
+        draw_cloud(r, cloud0);
+        draw_cloud(r, cloud1);
 
         renderer_draw(r, &window);
         window_poll_events();
