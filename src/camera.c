@@ -96,6 +96,12 @@ void camera_update(struct renderer *r, struct camera *cam,
         glfwGetMouseButton(window->handle, GLFW_MOUSE_BUTTON_LEFT) ==
         GLFW_PRESS;
 
+    // TODO: move out into somewhere
+    struct cloud_manager *m = &r->cloud_manager;
+    if (m->selected_cloud != NO_CLOUD) {
+        cloud_update_gizmo(r, m->selected_cloud);
+    }
+
     if (left_mouse_now && !cam->left_mouse_last) {
         matrix inverse_view = math_matrix_inverse(r->matrix_ubo.data.view);
         matrix inverse_proj = math_matrix_inverse(r->matrix_ubo.data.proj);
@@ -218,8 +224,6 @@ void camera_update(struct renderer *r, struct camera *cam,
                         c->scale.y = MAX(c->scale.y, 0.01f);
                         c->scale.z = MAX(c->scale.z, 0.01f);
                     }
-
-                    cloud_update_gizmo(r, m->selected_cloud);
                 }
             }
         }

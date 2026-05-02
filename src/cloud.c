@@ -1,4 +1,5 @@
 
+#include "cmath.h"
 #include "gizmo.h"
 #include <cloud.h>
 #include <log.h>
@@ -11,28 +12,32 @@ void cloud_manager_init(struct cloud_manager *manager) {
     manager->selected_cloud = NO_CLOUD;
 }
 
-static void make_gizmo(struct cloud *c) {
+static void make_gizmo(struct cloud *c, vec3 cam_pos) {
     struct gizmo *g = &c->gizmo;
-    f32 len = 1.5f; // gizmo arm len
+
+    vec3 to_cloud = math_vec3_subtract(c->pos, cam_pos);
+    f32 dist = math_vec3_length(to_cloud);
+    f32 len = dist * 0.15f;
+    f32 radius = len * 0.08f;
 
     g->hitboxes[0] = (struct gizmo_hitbox){
         .start = c->pos,
         .end = math_vec3_add(c->pos, (vec3){len, 0.0f, 0.0f}),
-        .radius = 0.1f,
+        .radius = radius,
         .axis = GIZMO_AXIS_X,
     };
 
     g->hitboxes[1] = (struct gizmo_hitbox){
         .start = c->pos,
         .end = math_vec3_add(c->pos, (vec3){0.0f, len, 0.0f}),
-        .radius = 0.1f,
+        .radius = radius,
         .axis = GIZMO_AXIS_Y,
     };
 
     g->hitboxes[2] = (struct gizmo_hitbox){
         .start = c->pos,
         .end = math_vec3_add(c->pos, (vec3){0.0f, 0.0f, len}),
-        .radius = 0.1f,
+        .radius = radius,
         .axis = GIZMO_AXIS_Z,
     };
 }
@@ -58,7 +63,7 @@ cloud_id cloud_create(struct renderer *r, vec3 pos, vec3 scale) {
         c->gizmo.active_axis = GIZMO_AXIS_NONE;
         c->gizmo.mode = GIZMO_MODE_TRANSLATE;
 
-        make_gizmo(c);
+        make_gizmo(c, r->camera.pos);
 
         id = i;
         break;
@@ -75,7 +80,7 @@ void cloud_update_gizmo(struct renderer *r, cloud_id cloud) {
 
     struct cloud_manager *m = &r->cloud_manager;
     struct cloud *c = &m->clouds[cloud];
-    make_gizmo(c);
+    make_gizmo(c, r->camera.pos);
 }
 
 struct cloud *cloud_get(struct renderer *r, cloud_id cloud) {
