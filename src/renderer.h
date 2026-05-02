@@ -32,6 +32,7 @@ struct renderer {
     vk_pipeline_id cloud_pip;
     vk_pipeline_id wireframe_pip;
     vk_pipeline_id bounding_pip;
+    vk_pipeline_id gizmo_pip;
 
     struct vk_command cmd;
 

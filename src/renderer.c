@@ -25,6 +25,7 @@
 // deliverables and acceptance criteria. (~ by cheesecake)
 
 #include "cloud.h"
+#include "vk/pipeline.h"
 #include <darray.h>
 #include <full_types.h>
 #include <log.h>
@@ -257,6 +258,50 @@ static bool create_bounding_pip(struct renderer *r,
     return true;
 }
 
+static bool create_gizmo_pip(struct renderer *r,
+                             VkVertexInputBindingDescription *bindings,
+                             u32 binding_count,
+                             VkVertexInputAttributeDescription *attributes,
+                             u32 attribute_count) {
+    struct vk_pipeline_desc desc = vk_pipeline_desc_default();
+
+    VkPipelineColorBlendAttachmentState blending = {
+        .blendEnable = VK_TRUE,
+        .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstColorBlendFactor = VK_BLEND_FACTOR_ONE,
+        .colorBlendOp = VK_BLEND_OP_ADD,
+        .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+        .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+        .alphaBlendOp = VK_BLEND_OP_ADD,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+    };
+
+    vk_pipeline_set_blend_state(&desc, &blending, 1);
+    vk_pipeline_set_vertex_input(&desc, bindings, binding_count, attributes,
+                                 attribute_count);
+    vk_pipeline_set_descriptor(&desc, &r->descriptors.layout, 1);
+
+    vk_pipeline_set_depth_state(&desc, VK_TRUE, VK_TRUE, VK_COMPARE_OP_ALWAYS);
+
+    vk_pipeline_set_shaders(&desc, "src/shaders/gizmo.vert",
+                            "src/shaders/gizmo.frag");
+
+    vk_pipeline_set_push_constant(&desc, sizeof(struct gizmo_pc),
+                                  VK_SHADER_STAGE_VERTEX_BIT |
+                                      VK_SHADER_STAGE_FRAGMENT_BIT);
+
+    r->gizmo_pip = vk_pipeline_create(&r->init, &r->swapchain,
+                                      &r->pipeline_manager, &desc);
+    if (r->gizmo_pip == NO_PIPELINE) {
+        return false;
+    }
+
+    LOGM(API_DUMP, "created gizmo pipeline");
+
+    return true;
+}
+
 static bool create_pipelines(struct renderer *r) {
     VkVertexInputBindingDescription binding_desc = {
         .binding = 0,
@@ -321,6 +366,11 @@ static bool create_pipelines(struct renderer *r) {
     }
 
     if (!create_bounding_pip(r, &color_blend_attachment, 1)) {
+        return false;
+    }
+
+    if (!create_gizmo_pip(r, &binding_desc, 1, attrib_desc,
+                          ARRAY_COUNT(attrib_desc))) {
         return false;
     }
 

@@ -39,3 +39,8 @@ struct bounding_pc {
     matrix model;
     vec4 color;
 };
+
+struct gizmo_pc {
+    matrix model;
+    u32 texture_index;
+};

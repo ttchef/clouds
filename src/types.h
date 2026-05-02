@@ -32,5 +32,6 @@ struct cloud_pc;
 struct shadow_pc;
 struct wireframe_pc;
 struct bounding_pc;
+struct gizmo_pc;
 
 #endif // TYPES_H
