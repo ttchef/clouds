@@ -56,6 +56,7 @@ cloud_id cloud_create(struct renderer *r, vec3 pos, vec3 scale) {
         };
 
         c->gizmo.active_axis = GIZMO_AXIS_NONE;
+        c->gizmo.mode = GIZMO_MODE_TRANSLATE;
 
         make_gizmo(c);
 

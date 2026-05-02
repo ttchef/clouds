@@ -12,6 +12,11 @@ enum {
     GIZMO_AXIS_Z,
 };
 
+enum {
+    GIZMO_MODE_TRANSLATE,
+    GIZMO_MODE_SCALE,
+};
+
 struct gizmo_hitbox {
     vec3 start;
     vec3 end;
@@ -22,7 +27,10 @@ struct gizmo_hitbox {
 struct gizmo {
     struct gizmo_hitbox hitboxes[3];
     i32 active_axis;
+    i32 mode;
+
     vec3 drag_start;
+    vec3 scale_start;
     vec3 draw_plane_normal;
 };
 

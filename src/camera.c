@@ -48,6 +48,30 @@ void camera_update(struct renderer *r, struct camera *cam,
             math_vec3_subtract(cam->pos, math_vec3_scale(up, cam->speed * dt));
     }
 
+    if (glfwGetKey(window->handle, GLFW_KEY_1) != GLFW_RELEASE) {
+        struct cloud_manager *m = &r->cloud_manager;
+
+        if (m->selected_cloud != NO_CLOUD) {
+            struct cloud *c = &m->clouds[m->selected_cloud];
+            struct gizmo *g = &c->gizmo;
+
+            g->mode = GIZMO_MODE_TRANSLATE;
+            LOGM(HIGHLITE, "switched gizmo mode to translate");
+        }
+    }
+
+    if (glfwGetKey(window->handle, GLFW_KEY_2) != GLFW_RELEASE) {
+        struct cloud_manager *m = &r->cloud_manager;
+
+        if (m->selected_cloud != NO_CLOUD) {
+            struct cloud *c = &m->clouds[m->selected_cloud];
+            struct gizmo *g = &c->gizmo;
+
+            g->mode = GIZMO_MODE_SCALE;
+            LOGM(HIGHLITE, "switched gizmo mode to scale");
+        }
+    }
+
     if (glfwGetMouseButton(window->handle, GLFW_MOUSE_BUTTON_RIGHT) ==
         GLFW_PRESS) {
         glfwSetInputMode(window->handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -107,6 +131,7 @@ void camera_update(struct renderer *r, struct camera *cam,
             if (g->active_axis != GIZMO_AXIS_NONE) {
                 g->drag_start =
                     math_vec3_add(cam->pos, math_vec3_scale(ray_dir, best));
+                g->scale_start = c->scale;
 
                 vec3 axis = {
                     .x = g->active_axis == GIZMO_AXIS_X ? 1.0f : 0.0f,
@@ -179,12 +204,21 @@ void camera_update(struct renderer *r, struct camera *cam,
 
                     vec3 diff = math_vec3_subtract(hit, g->drag_start);
                     f32 delta = math_vec3_dot(diff, axis);
+                    delta = math_clamp(delta, -10.0f, 10.0f);
 
-                    c->pos =
-                        math_vec3_add(c->pos, math_vec3_scale(axis, delta));
+                    if (g->mode == GIZMO_MODE_TRANSLATE) {
+                        c->pos =
+                            math_vec3_add(c->pos, math_vec3_scale(axis, delta));
+                        g->drag_start = math_vec3_add(
+                            g->drag_start, math_vec3_scale(axis, delta));
+                    } else {
+                        c->scale = math_vec3_add(g->scale_start,
+                                                 math_vec3_scale(axis, delta));
 
-                    g->drag_start = math_vec3_add(g->drag_start,
-                                                  math_vec3_scale(axis, delta));
+                        c->scale.x = MAX(c->scale.x, 0.01f);
+                        c->scale.y = MAX(c->scale.y, 0.01f);
+                        c->scale.z = MAX(c->scale.z, 0.01f);
+                    }
 
                     cloud_update_gizmo(r, m->selected_cloud);
                 }
