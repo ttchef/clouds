@@ -35,8 +35,6 @@ static void make_gizmo(struct cloud *c) {
         .radius = 0.1f,
         .axis = GIZMO_AXIS_Z,
     };
-
-    g->active_axis = GIZMO_AXIS_NONE;
 }
 
 cloud_id cloud_create(struct renderer *r, vec3 pos, vec3 scale) {
@@ -56,6 +54,8 @@ cloud_id cloud_create(struct renderer *r, vec3 pos, vec3 scale) {
             .scale = scale,
             .valid = true,
         };
+
+        c->gizmo.active_axis = GIZMO_AXIS_NONE;
 
         make_gizmo(c);
 

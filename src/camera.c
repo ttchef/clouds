@@ -153,8 +153,6 @@ void camera_update(struct renderer *r, struct camera *cam,
             struct gizmo *g = &c->gizmo;
 
             if (g->active_axis != GIZMO_AXIS_NONE) {
-                LOGM(HIGHLITE, "DRAG");
-
                 vec3 axis = {
                     .x = g->active_axis == GIZMO_AXIS_X ? 1.0f : 0.0f,
                     .y = g->active_axis == GIZMO_AXIS_Y ? 1.0f : 0.0f,
@@ -173,7 +171,8 @@ void camera_update(struct renderer *r, struct camera *cam,
                     inverse_proj);
 
                 f32 t;
-                if (collision_ray_plane_intersect(cam->pos, ray_dir, c->pos,
+                if (collision_ray_plane_intersect(cam->pos, ray_dir,
+                                                  g->drag_start,
                                                   g->draw_plane_normal, &t)) {
                     vec3 hit =
                         math_vec3_add(cam->pos, math_vec3_scale(ray_dir, t));
