@@ -1,0 +1,40 @@
+
+#ifndef COLLISION_H
+#define COLLISION_H
+
+#include <cmath.h>
+
+struct aabb {
+    vec3 min;
+    vec3 max;
+};
+
+static bool collision_overlap_aabb(struct aabb a, struct aabb b) {
+    return (a.min.x < b.max.x && a.max.x > b.min.x && a.min.y < b.max.y &&
+            a.max.y > b.min.y && a.min.z < b.max.z && a.max.z > b.min.z);
+}
+
+static struct aabb collision_get_aabb(vec3 pos, vec3 scale) {
+    vec3 half = math_vec3_scale(scale, 0.5f);
+    return (struct aabb){
+        .min = math_vec3_subtract(pos, half),
+        .max = math_vec3_add(pos, half),
+    };
+}
+
+// closest point p on segment [a, b]
+vec3 collision_closest_point_on_segment(vec3 a, vec3 b, vec3 p);
+
+bool collision_ray_capsule_intersect(vec3 ro, vec3 rd, vec3 seg_a, vec3 seg_b,
+                                     f32 radius, f32 *out);
+
+bool collision_ray_aabb_intersect(vec3 ro, vec3 rd, struct aabb box,
+                                  float *out);
+
+bool collision_ray_plane_intersect(vec3 ro, vec3 rd, vec3 plane_point,
+                                   vec3 plane_normal, f32 *out);
+
+vec3 collision_screen_to_ray(vec2 mouse, u32 screen_width, u32 screen_height,
+                             matrix invers_view, matrix inverse_proj);
+
+#endif // COLLISION_H

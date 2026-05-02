@@ -1,4 +1,5 @@
 
+#include "cloud.h"
 #include "types.h"
 #include "vk/pipeline.h"
 #include <draw.h>
@@ -85,20 +86,30 @@ void draw_model_texture(struct renderer *r, vec3 pos, vec3 scale,
     push_draw_cmd(r, &cmd);
 }
 
-void draw_cloud(struct renderer *r, struct cloud cloud) {
-    if (cloud.render_bounding_box) {
-        draw_bounding_box(r, cloud.pos, cloud.scale,
-                          (vec4){0.0, 1.0, 0.0, 1.0});
+void draw_cloud(struct renderer *r, cloud_id cloud) {
+    struct cloud *c = cloud_get(r, cloud);
+    if (!c) {
+        return;
+    }
+
+    if (r->cloud_manager.selected_cloud == cloud) {
+        draw_bounding_box(r, c->pos, c->scale, (vec4){0.0, 1.0, 0.0, 1.0});
+        draw_gizmo(r, c->pos, math_vec3_scale(c->scale, 0.2f));
     }
 
     struct draw_cmd cmd = (struct draw_cmd){
         .type = DRAW_CMD_TYPE_CLOUD,
-        .pos = cloud.pos,
-        .scale = cloud.scale,
+        .pos = c->pos,
+        .scale = c->scale,
         .cloud.color = (vec4){1.0, 0.0, 0.0, 1.0},
     };
 
     push_draw_cmd(r, &cmd);
+
+    if (r->cloud_manager.selected_cloud == cloud) {
+        // always on top of the cloud
+        draw_gizmo(r, c->pos, math_vec3_scale(c->scale, 0.8f));
+    }
 }
 
 void draw_wireframe(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
@@ -120,6 +131,16 @@ void draw_bounding_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color) {
         .pos = pos,
         .scale = scale,
         .bounding_box.color = color,
+    };
+
+    push_draw_cmd(r, &cmd);
+}
+
+void draw_gizmo(struct renderer *r, vec3 pos, vec3 scale) {
+    struct draw_cmd cmd = (struct draw_cmd){
+        .type = DRAW_CMD_TYPE_GIZMO,
+        .pos = pos,
+        .scale = scale,
     };
 
     push_draw_cmd(r, &cmd);
@@ -386,6 +407,44 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
 
             vkCmdDraw(data->cmd_buffer, 24, 1, 0, 0);
 
+        } break;
+        case DRAW_CMD_TYPE_GIZMO: {
+            if (shadow_pass) {
+                return;
+            }
+
+            struct vk_pipeline *gizmo_pip =
+                vk_pipeline_manager_get(&r->pipeline_manager, r->gizmo_pip);
+
+            vkCmdBindPipeline(data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                              gizmo_pip->handle);
+
+            vkCmdBindDescriptorSets(
+                data->cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                gizmo_pip->layout, 0, 1, &r->descriptors.sets[r->cmd.frame_idx],
+                0, NULL);
+
+            struct gizmo_pc push_constant = {
+                .model = model,
+                .texture_index = r->models[r->gizmo_id].texture,
+            };
+
+            vkCmdPushConstants(data->cmd_buffer, gizmo_pip->layout,
+                               VK_SHADER_STAGE_VERTEX_BIT |
+                                   VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(struct gizmo_pc), &push_constant);
+
+            VkDeviceSize offsets[] = {0};
+
+            vkCmdBindVertexBuffers(data->cmd_buffer, 0, 1,
+                                   &r->models[r->gizmo_id].vertex_buffer.handle,
+                                   offsets);
+            vkCmdBindIndexBuffer(data->cmd_buffer,
+                                 r->models[r->gizmo_id].index_buffer.handle, 0,
+                                 VK_INDEX_TYPE_UINT16);
+
+            vkCmdDrawIndexed(data->cmd_buffer, r->models[r->gizmo_id].n_index,
+                             1, 0, 0, 0);
         } break;
         }
     }

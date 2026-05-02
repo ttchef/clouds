@@ -1,5 +1,6 @@
 
 #include "cloud.h"
+#include "cmath.h"
 #include "draw.h"
 #include "light.h"
 #include "model.h"
@@ -64,8 +65,7 @@ i32 main(void) {
 
     light_set_render(r, true);
 
-    struct cloud cloud = cloud_create((vec3){0, 4, 0}, (vec3){1.0, 1.0, 1.0});
-    cloud_render_bounding_box(&cloud, true);
+    cloud_id cloud = cloud_create(r, (vec3){0, 4, 0}, (vec3){2.0, 2.0, 2.0});
 
     f32 last_time = window_get_time();
     while (!window_should_close(&window)) {
@@ -82,13 +82,13 @@ i32 main(void) {
         light_spot_update(r, spot, r->camera.pos, r->camera.direction,
                           (vec3){red, green, blue}, 20.0f, 12.5f, 17.5f);
 
-        draw_box(r, (vec3){0.0, -1.5, 0}, (vec3){10, 1, 10},
+        draw_box(r, (vec3){0.0, -1.5, 0}, (vec3){20, 1, 20},
                  (vec4){0.2, 0.5, 0.8, 1.0}, wood);
 
-        draw_box(r, (vec3){0.3, 0.0, -1.5f}, (vec3){0.2, 0.2, 0.2},
+        draw_box(r, (vec3){0.5, 0.0, -1.5f}, (vec3){0.5, 0.5, 0.5},
                  (vec4){0.0, 1.0, 0.0, 1.0}, NO_TEXTURE);
 
-        draw_box(r, (vec3){-0.3, 0.0, -1.5f}, (vec3){0.2, 0.2, 0.2},
+        draw_box(r, (vec3){-0.5, 0.0, -1.5f}, (vec3){0.5, 0.5, 0.5},
                  (vec4){0.0, 1.0, 0.0, 1.0}, NO_TEXTURE);
 
         draw_model_texture(r, (vec3){0, 1.5f, 0}, (vec3){1, 1, 1}, torus);

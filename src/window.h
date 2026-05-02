@@ -2,6 +2,7 @@
 #ifndef WINDOW_H
 #define WINDOW_H
 
+#include <cmath.h>
 #include <types.h>
 
 // TODO: idk maybe make it better
@@ -46,5 +47,7 @@ void window_set_user_ptr(struct window *window, void *ptr);
 void *window_get_user_ptr(struct window *window);
 
 void window_poll_events();
+
+vec2 window_get_mouse_pos(struct window *window);
 
 #endif // WINDOW_H

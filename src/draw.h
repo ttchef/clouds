@@ -18,6 +18,7 @@ enum {
     DRAW_CMD_TYPE_CLOUD,
     DRAW_CMD_TYPE_WIREFRAME,
     DRAW_CMD_TYPE_BOUNDING_BOX,
+    DRAW_CMD_TYPE_GIZMO,
 };
 
 struct draw_cmd {
@@ -73,12 +74,14 @@ void draw_model_color(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
 void draw_model_texture(struct renderer *r, vec3 pos, vec3 scale,
                         model_id model);
 
-void draw_cloud(struct renderer *r, struct cloud cloud);
+void draw_cloud(struct renderer *r, cloud_id cloud);
 
 void draw_wireframe(struct renderer *r, vec3 pos, vec3 scale, vec4 color,
                     model_id model);
 
 void draw_bounding_box(struct renderer *r, vec3 pos, vec3 scale, vec4 color);
+
+void draw_gizmo(struct renderer *r, vec3 pos, vec3 scale);
 
 void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
                struct shadow_pc *shadow_pc);

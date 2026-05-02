@@ -12,6 +12,7 @@
 
 #include <benchmark.h>
 #include <camera.h>
+#include <cloud.h>
 #include <draw.h>
 #include <light.h>
 #include <model.h>
@@ -31,6 +32,7 @@ struct renderer {
     vk_pipeline_id cloud_pip;
     vk_pipeline_id wireframe_pip;
     vk_pipeline_id bounding_pip;
+    vk_pipeline_id gizmo_pip;
 
     struct vk_command cmd;
 
@@ -41,6 +43,7 @@ struct renderer {
 
     struct texture_manager texture_manager;
     struct light_manager light_manager;
+    struct cloud_manager cloud_manager;
 
     struct camera camera;
 
