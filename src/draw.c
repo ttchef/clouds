@@ -2,6 +2,7 @@
 #include "cloud.h"
 #include "cmath.h"
 #include "types.h"
+#include "vk/matrix_ubo.h"
 #include "vk/pipeline.h"
 #include <draw.h>
 #include <full_types.h>
@@ -163,6 +164,10 @@ void draw_cmds(struct renderer *r, struct vk_frame_data *data, bool shadow_pass,
         matrix scale_m =
             math_matrix_scale(cmd->scale.x, cmd->scale.y, cmd->scale.z);
         matrix model = math_matrix_mul(translate_m, scale_m);
+
+        matrix inverse_model = math_matrix_inverse(model);
+        r->matrix_ubo.data.inverse_model = inverse_model;
+        vk_matrix_ubo_sync_data(r, &r->matrix_ubo);
 
         switch (cmd->type) {
         case DRAW_CMD_TYPE_MODEL_COLOR: {

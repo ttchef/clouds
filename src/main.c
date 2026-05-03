@@ -63,7 +63,7 @@ i32 main(void) {
         light_spot_create(r, (vec3){0, 0.5, -2}, (vec3){0, 0, -1},
                           (vec3){1.0, 0.0, 0.0}, 150.0f, 12.5f, 17.5f);
 
-    light_set_render(r, true);
+    // light_set_render(r, true);
 
     cloud_id cloud0 = cloud_create(r, (vec3){0, 4, 0}, (vec3){2.0, 2.0, 2.0});
     cloud_id cloud1 = cloud_create(r, (vec3){0, 10, 0}, (vec3){2.0, 2.0, 2.0});

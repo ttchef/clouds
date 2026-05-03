@@ -12,6 +12,7 @@ layout (set = 0, binding = GLOBAL_DESC_MATRIX_BINDING) uniform matrix_ubo {
     mat4 proj;
     mat4 view;
     mat4 proj_view;
+    mat4 inverse_model;
 } u_matrix;
 
 layout (push_constant) uniform Push {
@@ -23,16 +24,18 @@ layout (push_constant) uniform Push {
 layout (location = 0) out vec2 out_uv;
 layout (location = 1) out vec3 out_normal;
 layout (location = 2) out vec3 out_world_pos;
+layout (location = 3) out mat4 out_inverse_model;
 
 void main() {
     gl_Position = u_matrix.proj_view * pc.model * vec4(in_pos, 1.0);
     out_uv = in_uv;
 
-    // TODO: change to cpu side calculation
     out_normal = mat3(transpose(inverse(pc.model))) * in_normal;
 
     vec4 pos = pc.model * vec4(in_pos, 1.0);
     out_world_pos = pos.xyz;
+
+    out_inverse_model = inverse(pc.model);
 }
 
 

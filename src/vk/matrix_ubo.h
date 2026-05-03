@@ -12,6 +12,7 @@ struct vk_matrix_ubo_data {
     matrix proj;
     matrix view;
     matrix proj_view;
+    matrix inverse_model;
 };
 
 struct vk_matrix_ubo {

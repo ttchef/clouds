@@ -10,6 +10,7 @@
 layout (location = 0) in vec2 in_uv;
 layout (location = 1) in vec3 in_normal;
 layout (location = 2) in vec3 in_world_pos;
+layout (location = 3) in mat4 in_inverse_model;
 
 layout (set = 0, binding = GLOBAL_DESC_TEXTURE_BINDING) uniform sampler2D in_textures[MAX_TEXTURES];
 
@@ -67,20 +68,55 @@ vec2 intersect_box(vec3 ray_origin, vec3 ray_dir, vec3 box_min, vec3 box_max) {
 
     return vec2(entry, exit);
 }
+float remap(float v, float lo, float hi, float newLo, float newHi) {
+    return newLo + (v - lo) / (hi - lo) * (newHi - newLo);
+}
+
+float saturate(float x) { return clamp(x, 0.0, 1.0); }
 
 float sample_density(vec3 p, vec3 scale) {
- vec3 tile_scale = scale / min(min(scale.x, scale.y), scale.z); 
-vec3 uvw = (p + 0.5) * tile_scale;
+    vec3 tile_scale = scale / min(min(scale.x, scale.y), scale.z);
+    vec3 uvw = (p + 0.5) * tile_scale;
 
+    // height in [0, 1] — 0 = bottom, 1 = top of box
+    float h = p.y + 0.5;
+
+    // gradient: fade in at bottom, fade out at top
+    float grad_bottom = saturate(remap(h, 0.0, 0.3, 0.0, 1.0));
+    float grad_top    = saturate(remap(h, 0.6,  1.0, 1.0, 0.0));
+    float height_grad = grad_bottom * grad_top;
+
+    // wind offsets — same as before
     vec3 wind0 = vec3(0.05, 0.0, 0.02);
     vec3 wind1 = vec3(-0.02, 0.0, 0.04);
-        
-    float d = 0.0;
 
-    d += 1 * texture(u_noise, uvw * 0.5 + wind0 * pc.time * 2.0).r;
-    d += 0.3 * texture(u_noise, uvw * 1.0 + wind1 * pc.time * 1.5).r;
-    d += 0.1 * texture(u_noise, uvw * 2.0 - wind0 * pc.time * 5.5).r;
-    
+    // base shape — low frequency
+    float base = 0.0;
+    base += 1.0 * texture(u_noise, uvw * 0.4 + wind0 * pc.time * 2.0).r;
+    base += 0.5 * texture(u_noise, uvw * 0.7 + wind1 * pc.time * 1.5).r;
+    base /= 1.5;
+
+    // apply height gradient
+    float shaped = base * height_grad;
+
+    // coverage threshold — raise this (e.g. 0.5) for fewer clouds
+    float coverage = 0.4;
+    shaped = saturate(remap(shaped, coverage, 1.0, 0.0, 1.0));
+
+    // early out — skip expensive detail if no cloud here
+    if (shaped < 0.001) return 0.0;
+
+    // detail erosion — high frequency Worley
+    float detail = 0.0;
+    detail += 0.6 * texture(u_noise, uvw * 2.0 - wind0 * pc.time * 5.5).r;
+    detail += 0.4 * texture(u_noise, uvw * 4.0 + wind1 * pc.time * 3.0).r;
+
+    // bottom = round puffs, top = wispy tendrils
+    float detail_mod = mix(detail, 1.0 - detail, saturate(h * 3.0));
+
+    // erode edges with detail
+    float d = saturate(remap(shaped, detail_mod * 0.25, 1.0, 0.0, 1.0));
+
     return d;
 }
 
@@ -150,7 +186,7 @@ void main() {
     vec3 ray_origin_ws = pc.cam_pos.xyz;
     vec3 ray_dir_ws = normalize(in_world_pos - ray_origin_ws);
 
-    mat4 inverse_model = inverse(pc.model);
+    mat4 inverse_model = in_inverse_model;
 
     // object space
     vec3 ray_origin = (inverse_model * vec4(ray_origin_ws, 1.0)).xyz;
