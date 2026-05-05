@@ -4,8 +4,6 @@ Cloud Rendering using vulkan
 
 ONLY LINUX RIGHT NOW!!!
 
-Supports gltf loading right now.
-
 Lighting:
   - Blinn-Phong lighting model
   - Directional lights
