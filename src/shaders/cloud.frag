@@ -42,12 +42,12 @@ layout (push_constant) uniform Push {
 
 layout (location = 0) out vec4 out_color;
 
-#define LIGHT_STEPS 6
-#define LIGHT_STEP_SIZE 0.1
-#define EXTINCTION 3.3
-#define SCATTERING 2.3
+#define LIGHT_STEPS 4
+#define LIGHT_STEP_SIZE 0.15
+#define EXTINCTION 4.0
+#define SCATTERING 1.2
 #define HG_G 0.6 // henyes greenstein anisotropy (0 isotropic - 1 ansiotropy)
-#define DENSITY_THRESHOLD 0.05
+#define DENSITY_THRESHOLD 0.15
 #define DUAL_LOP_COEFF 0.7
 
 vec3 cloud_scale = vec3(
@@ -78,44 +78,46 @@ float sample_density(vec3 p, vec3 scale) {
     vec3 tile_scale = scale / min(min(scale.x, scale.y), scale.z);
     vec3 uvw = (p + 0.5) * tile_scale;
 
-    // height in [0, 1] — 0 = bottom, 1 = top of box
     float h = p.y + 0.5;
 
-    // gradient: fade in at bottom, fade out at top
-    float grad_bottom = saturate(remap(h, 0.0, 0.3, 0.0, 1.0));
-    float grad_top    = saturate(remap(h, 0.6,  1.0, 1.0, 0.0));
+    // More dramatic height gradient - taller, flatter bases
+    float grad_bottom = saturate(remap(h, 0.0, 0.2, 0.0, 1.0));
+    float grad_top    = saturate(remap(h, 0.5, 1.0, 1.0, 0.0));
     float height_grad = grad_bottom * grad_top;
 
-    // wind offsets — same as before
-    vec3 wind0 = vec3(0.05, 0.0, 0.02);
-    vec3 wind1 = vec3(-0.02, 0.0, 0.04);
+    if (height_grad < 0.01) {
+        return 0.0;
+    }
 
-    // base shape — low frequency
+    // Slower wind for bigger cloud structures
+    vec3 wind0 = vec3(0.03, 0.0, 0.01);
+    vec3 wind1 = vec3(-0.01, 0.0, 0.02);
+
+    // BIG CLOUD SHAPE - much lower frequency for billowing clouds
     float base = 0.0;
-    base += 1.0 * texture(u_noise, uvw * 0.4 + wind0 * pc.time * 2.0).r;
-    base += 0.5 * texture(u_noise, uvw * 0.7 + wind1 * pc.time * 1.5).r;
-    base /= 1.5;
+    base += 1.0 * texture(u_noise, uvw * 0.15 + wind0 * pc.time * 1.0).r;
+    base += 0.6 * texture(u_noise, uvw * 0.25 + wind1 * pc.time * 0.8).r;
+    base += 0.3 * texture(u_noise, uvw * 0.4 + wind0 * pc.time * 0.6).r;
+    base /= 1.9;
 
-    // apply height gradient
     float shaped = base * height_grad;
 
-    // coverage threshold — raise this (e.g. 0.5) for fewer clouds
-    float coverage = 0.4;
+    // Lower coverage = bigger gaps between clouds
+    float coverage = 0.25;
     shaped = saturate(remap(shaped, coverage, 1.0, 0.0, 1.0));
 
-    // early out — skip expensive detail if no cloud here
     if (shaped < 0.001) return 0.0;
 
-    // detail erosion — high frequency Worley
+    // Much reduced detail - only subtle edge softening
     float detail = 0.0;
-    detail += 0.6 * texture(u_noise, uvw * 2.0 - wind0 * pc.time * 5.5).r;
-    detail += 0.4 * texture(u_noise, uvw * 4.0 + wind1 * pc.time * 3.0).r;
+    detail += 0.5 * texture(u_noise, uvw * 0.8 - wind0 * pc.time * 2.0).r;
+    detail += 0.3 * texture(u_noise, uvw * 1.2 + wind1 * pc.time * 1.5).r;
 
-    // bottom = round puffs, top = wispy tendrils
-    float detail_mod = mix(detail, 1.0 - detail, saturate(h * 3.0));
+    // Less aggressive detail - keep big cloud shapes intact
+    float detail_mod = mix(detail * 0.5, 1.0 - detail * 0.3, saturate(h * 2.0));
 
-    // erode edges with detail
-    float d = saturate(remap(shaped, detail_mod * 0.25, 1.0, 0.0, 1.0));
+    // Gentler erosion to maintain large cloud structures
+    float d = saturate(remap(shaped, detail_mod * 0.15, 1.0, 0.0, 1.0));
 
     return d;
 }
@@ -131,6 +133,7 @@ float light_transmittance(vec3 p, vec3 light_dir, vec3 scale) {
             break;
         }
         shadow += sample_density(lp, scale) * LIGHT_STEP_SIZE;
+        if (shadow > 2.0) return 0.0;
     }
     return exp(-shadow * EXTINCTION);
 }
@@ -152,7 +155,7 @@ vec3 multi_scatter(float cos_theta, vec3 sun_color, float light) {
     float scatter_ms = SCATTERING;
     float g_ms = HG_G;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 2; i++) {
         float phase = dual_lop_henyey_greenstein(cos_theta, g_ms);
         float light_ms = pow(light, pow(0.5, float(i)));
         result += scatter_ms * phase * sun_color * light_ms * pow(0.5, float(i));
@@ -204,8 +207,8 @@ void main() {
         discard;
     }
 
-    float step_size = 0.02;
-    
+    float step_size = 0.025;
+
     float jit = jitter(gl_FragCoord.xy) * step_size;
     float t = max(hit.x, 0.0) + jit;
     float end = hit.y;
@@ -218,7 +221,7 @@ void main() {
 
     // for optimisation
     bool in_cloud = false;
-    float big_step = step_size * 5.0;
+    float big_step = step_size * 6.0;
 
     while (t < end) {
         vec3 p = ray_origin + t * ray_dir;
@@ -239,8 +242,8 @@ void main() {
 
         float light = light_transmittance(p, sun_dir, cloud_scale);
         vec3 lighting = multi_scatter(cos_theta, sun_color, light) + 0.15 * ambient_color;
-        
-        vec3 scattering = d * step_size * transmittance * lighting;
+
+        vec3 scattering = d * step_size * transmittance * lighting * 0.6;
 
         col += scattering;
         // col += d * SCATTERING * step_size * transmittance * pc.color.xyz;
