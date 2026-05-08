@@ -202,11 +202,11 @@ bool vk_image_create_cube_map(struct vk_init *init, struct vk_image *image,
 bool vk_image_create_noise(struct vk_init *init, f32 *noise, u32 noise_size,
                            struct vk_image *image) {
     vk_image_create(
-        init, image, noise_size, noise_size, noise_size, VK_FORMAT_R32_SFLOAT,
+        init, image, noise_size, noise_size, noise_size, VK_FORMAT_R32G32B32A32_SFLOAT,
         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         IMAGE_TYPE_3D);
     vk_image_upload_data(init, image,
-                         noise_size * noise_size * noise_size * sizeof(f32),
+                         noise_size * noise_size * noise_size * sizeof(f32) * 4,
                          noise, noise_size, noise_size, noise_size,
                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                          VK_ACCESS_SHADER_READ_BIT, NULL);

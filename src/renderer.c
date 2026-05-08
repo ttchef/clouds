@@ -148,7 +148,7 @@ static bool create_cloud_pip(struct renderer *r,
     LOGM(API_DUMP, "created cloud pipeline");
 
     u32 noise_size = 128;
-    f32 *noise = malloc(noise_size * noise_size * noise_size * sizeof(f32));
+    f32 *noise = malloc(noise_size * noise_size * noise_size * sizeof(f32) * 4);
     noise_gen_perlin_worly(noise, noise_size, NOISE_TYPE_3D);
     vk_image_create_noise(&r->init, noise, noise_size, &r->noise);
 
